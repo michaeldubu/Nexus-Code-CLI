@@ -1,12 +1,13 @@
 /**
  * Unified Multi-Model Manager
- * Supports both OpenAI Responses API and Anthropic Messages API
+ * Supports Anthropic, OpenAI, Google Gemini, and Ollama
  */
 
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-export type ModelProvider = 'anthropic' | 'openai';
+export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'ollama';
 
 export interface ModelConfig {
   id: string;
@@ -14,6 +15,7 @@ export interface ModelConfig {
   provider: ModelProvider;
   supportsThinking?: boolean;
   supportsReasoning?: boolean;
+  supportsVision?: boolean;
   reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
   maxTokens: number;
   contextWindow: number;
@@ -70,6 +72,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'GPT-4o',
     provider: 'openai',
     supportsReasoning: false,
+    supportsVision: true,
     maxTokens: 4096,
     contextWindow: 128000,
   },
@@ -90,6 +93,34 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     reasoningEffort: 'medium',
     maxTokens: 65536,
     contextWindow: 200000,
+  },
+
+  // Google Gemini Models
+  'gemini-2.0-flash-exp': {
+    id: 'gemini-2.0-flash-exp',
+    name: 'Gemini 2.0 Flash',
+    provider: 'google',
+    supportsVision: true,
+    maxTokens: 8192,
+    contextWindow: 1000000,
+  },
+  'gemini-exp-1206': {
+    id: 'gemini-exp-1206',
+    name: 'Gemini 2.0 Pro (Exp)',
+    provider: 'google',
+    supportsVision: true,
+    supportsReasoning: true,
+    reasoningEffort: 'high',
+    maxTokens: 8192,
+    contextWindow: 2000000,
+  },
+  'gemini-1.5-pro': {
+    id: 'gemini-1.5-pro',
+    name: 'Gemini 1.5 Pro',
+    provider: 'google',
+    supportsVision: true,
+    maxTokens: 8192,
+    contextWindow: 2000000,
   },
 };
 
@@ -129,21 +160,60 @@ export interface ModelResponse {
 }
 
 export class UnifiedModelManager {
-  private anthropic: Anthropic;
-  private openai: OpenAI;
+  private anthropic?: Anthropic;
+  private openai?: OpenAI;
+  private google?: GoogleGenerativeAI;
   private currentModel: string;
   private thinkingEnabled: boolean = true;
   private reasoningEffort: 'minimal' | 'low' | 'medium' | 'high' = 'high';
   private lastResponseId?: string;
 
   constructor(
-    anthropicKey: string,
-    openaiKey: string,
-    defaultModel: string = 'claude-sonnet-4-5-20250929'
+    anthropicKey?: string,
+    openaiKey?: string,
+    googleKey?: string,
+    defaultModel?: string
   ) {
-    this.anthropic = new Anthropic({ apiKey: anthropicKey });
-    this.openai = new OpenAI({ apiKey: openaiKey });
-    this.currentModel = defaultModel;
+    // Initialize only the clients for which we have API keys
+    if (anthropicKey) {
+      this.anthropic = new Anthropic({ apiKey: anthropicKey });
+    }
+    if (openaiKey) {
+      this.openai = new OpenAI({ apiKey: openaiKey });
+    }
+    if (googleKey) {
+      this.google = new GoogleGenerativeAI(googleKey);
+    }
+
+    // Set default model to first available provider
+    if (defaultModel && this.isModelAvailable(defaultModel)) {
+      this.currentModel = defaultModel;
+    } else {
+      // Auto-select first available model
+      if (anthropicKey) this.currentModel = 'claude-sonnet-4-5-20250929';
+      else if (openaiKey) this.currentModel = 'gpt-5';
+      else if (googleKey) this.currentModel = 'gemini-2.0-flash-exp';
+      else this.currentModel = ''; // No keys provided
+    }
+  }
+
+  /**
+   * Check if a model is available (has API key)
+   */
+  private isModelAvailable(modelId: string): boolean {
+    const config = AVAILABLE_MODELS[modelId];
+    if (!config) return false;
+
+    switch (config.provider) {
+      case 'anthropic':
+        return !!this.anthropic;
+      case 'openai':
+        return !!this.openai;
+      case 'google':
+        return !!this.google;
+      default:
+        return false;
+    }
   }
 
   /**
@@ -205,10 +275,12 @@ export class UnifiedModelManager {
   }
 
   /**
-   * List all available models
+   * List all available models (only those with API keys)
    */
   listModels(): ModelConfig[] {
-    return Object.values(AVAILABLE_MODELS);
+    return Object.values(AVAILABLE_MODELS).filter(model =>
+      this.isModelAvailable(model.id)
+    );
   }
 
   /**
@@ -226,8 +298,12 @@ export class UnifiedModelManager {
 
     if (config.provider === 'anthropic') {
       return this.sendAnthropicMessage(messages, options);
-    } else {
+    } else if (config.provider === 'openai') {
       return this.sendOpenAIMessage(messages, options);
+    } else if (config.provider === 'google') {
+      return this.sendGeminiMessage(messages, options);
+    } else {
+      throw new Error(`Unsupported provider: ${config.provider}`);
     }
   }
 
@@ -251,14 +327,13 @@ export class UnifiedModelManager {
 
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
 
-    // When thinking is enabled, temperature MUST be 1.0
+    // MAXIMUM CREATIVITY! All models use temperature 1.0 🔥
     const useThinking = this.getModelConfig().supportsThinking && this.thinkingEnabled;
-    const temperature = useThinking ? 1.0 : (options.temperature || 0.7);
 
     const response = await this.anthropic.messages.create({
       model: this.currentModel,
       max_tokens: options.maxTokens || this.getModelConfig().maxTokens,
-      temperature,
+      temperature: 1.0,
       system: systemPrompt,
       messages: formattedMessages,
       // Enable extended thinking if supported and enabled
@@ -328,7 +403,7 @@ export class UnifiedModelManager {
       model: this.currentModel,
       input: input.length === 1 ? input[0].content[0].text : input,
       max_output_tokens: options.maxTokens || this.getModelConfig().maxTokens,
-      temperature: options.temperature || 0.7,
+      temperature: 1.0,
       // Use previous_response_id for context chaining
       ...(this.lastResponseId && { previous_response_id: this.lastResponseId }),
       // Enable reasoning for supported models
@@ -389,8 +464,12 @@ export class UnifiedModelManager {
 
     if (config.provider === 'anthropic') {
       yield* this.streamAnthropicMessage(messages, options);
-    } else {
+    } else if (config.provider === 'openai') {
       yield* this.streamOpenAIMessage(messages, options);
+    } else if (config.provider === 'google') {
+      yield* this.streamGeminiMessage(messages, options);
+    } else {
+      throw new Error(`Unsupported provider: ${config.provider}`);
     }
   }
 
@@ -414,14 +493,13 @@ export class UnifiedModelManager {
 
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
 
-    // When thinking is enabled, temperature MUST be 1.0
+    // MAXIMUM CREATIVITY! All models use temperature 1.0 🔥
     const useThinking = this.getModelConfig().supportsThinking && this.thinkingEnabled;
-    const temperature = useThinking ? 1.0 : (options.temperature || 0.7);
 
     const stream = await this.anthropic.messages.stream({
       model: this.currentModel,
       max_tokens: options.maxTokens || this.getModelConfig().maxTokens,
-      temperature,
+      temperature: 1.0,
       system: systemPrompt,
       messages: formattedMessages,
       ...(useThinking && {
@@ -488,7 +566,7 @@ export class UnifiedModelManager {
       model: this.currentModel,
       input: input.length === 1 ? input[0].content[0].text : input,
       max_output_tokens: options.maxTokens || this.getModelConfig().maxTokens,
-      temperature: options.temperature || 0.7,
+      temperature: 1.0,
       stream: true,
       ...(this.lastResponseId && { previous_response_id: this.lastResponseId }),
       ...(this.getModelConfig().supportsReasoning && {
@@ -516,6 +594,111 @@ export class UnifiedModelManager {
         yield { type: 'done' };
       }
     }
+  }
+
+  /**
+   * Send message to Google Gemini
+   */
+  private async sendGeminiMessage(
+    messages: Message[],
+    options: {
+      temperature?: number;
+      maxTokens?: number;
+      systemPrompt?: string;
+    }
+  ): Promise<ModelResponse> {
+    if (!this.google) {
+      throw new Error('Google API key not provided');
+    }
+
+    const model = this.google.getGenerativeModel({ model: this.currentModel });
+
+    // Build chat history for Gemini
+    const history: any[] = [];
+    const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
+
+    for (const msg of messages.filter(m => m.role !== 'system')) {
+      history.push({
+        role: msg.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: msg.content }],
+      });
+    }
+
+    // Remove last message (we'll send it separately)
+    const lastMessage = history.pop();
+
+    const chat = model.startChat({
+      history,
+      generationConfig: {
+        temperature: 1.0,
+        maxOutputTokens: options.maxTokens || this.getModelConfig().maxTokens,
+      },
+      ...(systemPrompt && { systemInstruction: systemPrompt }),
+    });
+
+    const result = await chat.sendMessage(lastMessage?.parts || [{ text: '' }]);
+    const response = result.response;
+
+    return {
+      content: response.text(),
+      usage: {
+        inputTokens: response.usageMetadata?.promptTokenCount || 0,
+        outputTokens: response.usageMetadata?.candidatesTokenCount || 0,
+      },
+    };
+  }
+
+  /**
+   * Stream from Google Gemini
+   */
+  private async *streamGeminiMessage(
+    messages: Message[],
+    options: {
+      temperature?: number;
+      maxTokens?: number;
+      systemPrompt?: string;
+    }
+  ): AsyncGenerator<StreamChunk> {
+    if (!this.google) {
+      throw new Error('Google API key not provided');
+    }
+
+    const model = this.google.getGenerativeModel({ model: this.currentModel });
+
+    const history: any[] = [];
+    const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
+
+    for (const msg of messages.filter(m => m.role !== 'system')) {
+      history.push({
+        role: msg.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: msg.content }],
+      });
+    }
+
+    const lastMessage = history.pop();
+
+    const chat = model.startChat({
+      history,
+      generationConfig: {
+        temperature: 1.0,
+        maxOutputTokens: options.maxTokens || this.getModelConfig().maxTokens,
+      },
+      ...(systemPrompt && { systemInstruction: systemPrompt }),
+    });
+
+    const result = await chat.sendMessageStream(lastMessage?.parts || [{ text: '' }]);
+
+    for await (const chunk of result.stream) {
+      const text = chunk.text();
+      if (text) {
+        yield {
+          type: 'text',
+          content: text,
+        };
+      }
+    }
+
+    yield { type: 'done' };
   }
 
   /**

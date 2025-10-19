@@ -542,10 +542,14 @@ async function main() {
   // Load API keys
   const anthropicKey = process.env.ANTHROPIC_API_KEY || '';
   const openaiKey = process.env.OPENAI_API_KEY || '';
+  const googleKey = process.env.GOOGLE_API_KEY || '';
 
-  if (!anthropicKey && !openaiKey) {
+  if (!anthropicKey && !openaiKey && !googleKey) {
     console.error(chalk.red('❌ Error: No API keys found!'));
-    console.error(chalk.yellow('💡 Set ANTHROPIC_API_KEY or OPENAI_API_KEY in your .env file'));
+    console.error(chalk.yellow('💡 Set at least one API key in your .env file:'));
+    console.error(chalk.gray('   - ANTHROPIC_API_KEY (Claude)'));
+    console.error(chalk.gray('   - OPENAI_API_KEY (GPT, O-series)'));
+    console.error(chalk.gray('   - GOOGLE_API_KEY (Gemini)'));
     process.exit(1);
   }
 
@@ -555,7 +559,7 @@ async function main() {
   const modelManager = new UnifiedModelManager(
     anthropicKey,
     openaiKey,
-    'claude-sonnet-4-5-20250929'
+    googleKey
   );
 
   const fileSystem = new NexusFileSystem(process.cwd());
