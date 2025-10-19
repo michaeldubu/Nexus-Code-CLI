@@ -53,3 +53,8 @@ temp/
 
 # TypeScript cache
 *.tsbuildinfo
+
+
+*.txt~
+*.ts~
+*.tsx~
