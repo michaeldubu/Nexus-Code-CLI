@@ -34,6 +34,7 @@ const COMMANDS = [
   { name: '/model', description: 'List and switch models' },
   { name: '/permissions', description: 'Manage command permissions' },
   { name: '/restore-code', description: 'Restore code from history' },
+  { name: '/add-dir', description: 'Add working directory' },
   { name: '/clear', description: 'Clear conversation history' },
   { name: '/exit', description: 'Exit Nexus Code' },
 ];
@@ -59,6 +60,7 @@ function printWelcome(state: CLIState) {
   const modelConfig = state.modelManager.getModelConfig();
 
   console.log(chalk.white(`🤖 Active Model: ${chalk.cyan(modelConfig.name)} (${currentModel})`));
+  console.log(chalk.white(`📁 Working Directory: ${chalk.gray(state.fileTools.getWorkingDirectory())}`));
 
   if (modelConfig.supportsThinking) {
     const thinkingState = state.modelManager.isThinkingEnabled() ? 'ON' : 'OFF';
@@ -270,6 +272,59 @@ async function showRestoreMenu(state: CLIState): Promise<void> {
 }
 
 /**
+ * Add working directory
+ */
+async function addWorkingDirectory(state: CLIState): Promise<void> {
+  console.log();
+  console.log(chalk.cyan('Add Working Directory'));
+  console.log(chalk.gray('━'.repeat(65)));
+  console.log();
+  console.log(chalk.white('Current directory: ') + chalk.gray(state.fileTools.getWorkingDirectory()));
+  console.log();
+  console.log(chalk.gray('Enter path to add as working directory:'));
+
+  return new Promise((resolve) => {
+    state.rl.question(chalk.cyan('path> '), (path) => {
+      const trimmedPath = path.trim();
+      if (trimmedPath) {
+        try {
+          const fs = require('fs');
+          if (fs.existsSync(trimmedPath)) {
+            state.fileTools.setWorkingDirectory(trimmedPath);
+            console.log(chalk.green(`✅ Working directory changed to: ${trimmedPath}`));
+          } else {
+            console.log(chalk.red(`❌ Directory does not exist: ${trimmedPath}`));
+          }
+        } catch (error) {
+          console.log(chalk.red(`❌ Error: ${(error as Error).message}`));
+        }
+      }
+      console.log();
+      resolve();
+    });
+  });
+}
+
+/**
+ * Show command autocomplete menu
+ */
+function showCommandAutocomplete(partial: string = ''): void {
+  console.log();
+  console.log(chalk.cyan('Available Commands:'));
+  console.log(chalk.gray('━'.repeat(65)));
+
+  const filtered = COMMANDS.filter(cmd => cmd.name.startsWith(partial || '/'));
+
+  for (const cmd of filtered) {
+    console.log(`  ${chalk.green(cmd.name.padEnd(18))} ${chalk.gray(cmd.description)}`);
+  }
+
+  console.log();
+  console.log(chalk.gray('Press Tab for more, or type command name'));
+  console.log();
+}
+
+/**
  * Handle commands
  */
 async function handleCommand(command: string, state: CLIState): Promise<boolean> {
@@ -290,6 +345,10 @@ async function handleCommand(command: string, state: CLIState): Promise<boolean>
 
     case '/restore-code':
       await showRestoreMenu(state);
+      return true;
+
+    case '/add-dir':
+      await addWorkingDirectory(state);
       return true;
 
     case '/clear':
@@ -408,6 +467,13 @@ async function startREPL(state: CLIState, resumeSession: boolean): Promise<void>
     const input = line.trim();
 
     if (!input) {
+      state.rl.prompt();
+      return;
+    }
+
+    // Show command autocomplete when typing just "/"
+    if (input === '/') {
+      showCommandAutocomplete();
       state.rl.prompt();
       return;
     }

@@ -64,10 +64,12 @@ export class NexusFileSystem {
   private modelsDir: string;
   private setupPath: string;
   private currentSessionPath: string;
+  private workingDir: string;
 
   constructor(workingDir: string = process.cwd()) {
-    // .nexus in the current working directory
-    this.nexusDir = join(workingDir, '.nexus');
+    // .nexus in the user's home directory (like Claude Code)
+    this.nexusDir = join(homedir(), '.nexus');
+    this.workingDir = workingDir;
     this.conversationsDir = join(this.nexusDir, 'conversations');
     this.fileHistoryDir = join(this.nexusDir, 'file-history');
     this.logsDir = join(this.nexusDir, 'logs');
@@ -106,11 +108,26 @@ export class NexusFileSystem {
       return JSON.parse(data);
     }
 
-    // Default setup
+    // Default setup with pre-approved safe commands
     const defaultSetup: NexusSetup = {
       systemPrompt: undefined,
-      approvedCommands: [],
-      deniedCommands: [],
+      approvedCommands: [
+        'ls',
+        'pwd',
+        'cat',
+        'git status',
+        'git diff',
+        'git log',
+        'npm',
+        'node',
+        'python',
+      ],
+      deniedCommands: [
+        'rm -rf',
+        'sudo',
+        'chmod 777',
+        'dd',
+      ],
       defaultModel: 'claude-sonnet-4-5-20250929',
       modelPreferences: {
         'claude-sonnet-4-5-20250929': {

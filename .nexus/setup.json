@@ -1,5 +1,7 @@
 {
-  "approvedCommands": [],
+  "approvedCommands": [
+    "npm run dev"
+  ],
   "deniedCommands": [],
   "defaultModel": "claude-sonnet-4-5-20250929",
   "modelPreferences": {

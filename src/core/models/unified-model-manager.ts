@@ -52,7 +52,8 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'gpt-5-mini',
     name: 'GPT-5 Mini',
     provider: 'openai',
-    supportsReasoning: false,
+    supportsReasoning: true,
+    reasoningEffort: 'low',
     maxTokens: 16384,
     contextWindow: 128000,
   },
@@ -250,20 +251,23 @@ export class UnifiedModelManager {
 
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
 
+    // When thinking is enabled, temperature MUST be 1.0
+    const useThinking = this.getModelConfig().supportsThinking && this.thinkingEnabled;
+    const temperature = useThinking ? 1.0 : (options.temperature || 0.7);
+
     const response = await this.anthropic.messages.create({
       model: this.currentModel,
       max_tokens: options.maxTokens || this.getModelConfig().maxTokens,
-      temperature: options.temperature || 0.7,
+      temperature,
       system: systemPrompt,
       messages: formattedMessages,
       // Enable extended thinking if supported and enabled
-      ...(this.getModelConfig().supportsThinking &&
-        this.thinkingEnabled && {
-          thinking: {
-            type: 'enabled',
-            budget_tokens: 10000,
-          },
-        }),
+      ...(useThinking && {
+        thinking: {
+          type: 'enabled',
+          budget_tokens: 10000,
+        },
+      }),
     });
 
     const textContent = response.content.find(c => c.type === 'text');
@@ -410,19 +414,22 @@ export class UnifiedModelManager {
 
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
 
+    // When thinking is enabled, temperature MUST be 1.0
+    const useThinking = this.getModelConfig().supportsThinking && this.thinkingEnabled;
+    const temperature = useThinking ? 1.0 : (options.temperature || 0.7);
+
     const stream = await this.anthropic.messages.stream({
       model: this.currentModel,
       max_tokens: options.maxTokens || this.getModelConfig().maxTokens,
-      temperature: options.temperature || 0.7,
+      temperature,
       system: systemPrompt,
       messages: formattedMessages,
-      ...(this.getModelConfig().supportsThinking &&
-        this.thinkingEnabled && {
-          thinking: {
-            type: 'enabled',
-            budget_tokens: 10000,
-          },
-        }),
+      ...(useThinking && {
+        thinking: {
+          type: 'enabled',
+          budget_tokens: 10000,
+        },
+      }),
     });
 
     for await (const chunk of stream) {
