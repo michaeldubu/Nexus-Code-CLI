@@ -1,15 +1,9 @@
-# 🚀 Nexus Code CLI - Build Complete!
+# 🚀 Nexus Code CLI 
 
-## What We Just Built
-
-We took your existing **Nexus Code** multi-agent library and turned it into a **fully interactive CLI tool** that rivals (and beats!) Claude Code.
-
----
-
-## ✅ Completed Features
+## Features
 
 ### 1. **Interactive CLI Interface**
-- ✅ Beautiful ASCII art banner
+- ✅ 'NEXUS' ASCII art banner 
 - ✅ Real-time REPL with `nexus>` prompt
 - ✅ Color-coded agent activity display
 - ✅ Built-in command system (`/help`, `/agents`, `/exit`, etc.)
@@ -52,7 +46,6 @@ We took your existing **Nexus Code** multi-agent library and turned it into a **
 
 ### Quick Start
 ```bash
-# Run immediately (you're already here!)
 npm run cli
 
 # Start chatting:
@@ -101,22 +94,6 @@ nexus  # Run from anywhere!
 3. **`.env`**
    - Created with your Anthropic API key
 
----
-
-## What Makes Nexus Better Than Claude Code
-
-| Feature | Claude Code | **Nexus Code** |
-|---------|-------------|----------------|
-| Architecture | Single assistant | ✅ Multi-agent (3-5 agents) |
-| Execution | Sequential | ✅ **Parallel** (3-5x faster) |
-| Security | Basic | ✅ **Enterprise ABAC/ReBAC + sandboxing** |
-| Audit Trail | None | ✅ **Complete immutable logs** |
-| Specialization | General | ✅ **Dedicated agents** (Security, Testing, etc.) |
-| UI | Simple chat | ✅ **Rich terminal UI** with status |
-| Context | Single thread | ✅ **Multi-agent context** management |
-| Provenance | None | ✅ **Full artifact tracking** |
-
----
 
 ## Example Usage
 

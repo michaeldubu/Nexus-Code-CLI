@@ -33,6 +33,7 @@ const COMMANDS = [
   { name: '/help', description: 'Show available commands' },
   { name: '/model', description: 'List and switch models' },
   { name: '/permissions', description: 'Manage command permissions' },
+  { name: '/verbose', description: 'Toggle verbose mode (show all tool calls)' },
   { name: '/restore-code', description: 'Restore code from history' },
   { name: '/add-dir', description: 'Add working directory' },
   { name: '/clear', description: 'Clear conversation history' },
@@ -351,6 +352,15 @@ async function handleCommand(command: string, state: CLIState): Promise<boolean>
       await addWorkingDirectory(state);
       return true;
 
+    case '/verbose':
+      const newVerboseState = !state.fileTools.isVerbose();
+      state.fileTools.setVerbose(newVerboseState);
+      console.log();
+      console.log(chalk.yellow(`🔧 Verbose Mode: ${newVerboseState ? chalk.green('ON') : chalk.gray('OFF')}`));
+      console.log(chalk.gray(`   ${newVerboseState ? 'Will show all tool calls (Read, Write, Edit, etc)' : 'Tool calls hidden'}`));
+      console.log();
+      return true;
+
     case '/clear':
       state.conversationMessages = [];
       state.modelManager.resetConversation();
@@ -542,10 +552,14 @@ async function main() {
   // Load API keys
   const anthropicKey = process.env.ANTHROPIC_API_KEY || '';
   const openaiKey = process.env.OPENAI_API_KEY || '';
+  const googleKey = process.env.GOOGLE_API_KEY || '';
 
-  if (!anthropicKey && !openaiKey) {
+  if (!anthropicKey && !openaiKey && !googleKey) {
     console.error(chalk.red('❌ Error: No API keys found!'));
-    console.error(chalk.yellow('💡 Set ANTHROPIC_API_KEY or OPENAI_API_KEY in your .env file'));
+    console.error(chalk.yellow('💡 Set at least one API key in your .env file:'));
+    console.error(chalk.gray('   - ANTHROPIC_API_KEY (Claude)'));
+    console.error(chalk.gray('   - OPENAI_API_KEY (GPT, O-series)'));
+    console.error(chalk.gray('   - GOOGLE_API_KEY (Gemini)'));
     process.exit(1);
   }
 
@@ -555,7 +569,7 @@ async function main() {
   const modelManager = new UnifiedModelManager(
     anthropicKey,
     openaiKey,
-    'claude-sonnet-4-5-20250929'
+    googleKey
   );
 
   const fileSystem = new NexusFileSystem(process.cwd());
