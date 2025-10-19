@@ -9,10 +9,10 @@
 
 ## 🎯 WHAT IS THIS?
 
-Nexus Code CLI is a **fully conversational AI coding assistant** that rivals and surpasses Claude Code. It's not just a library - it's a complete, production-ready CLI tool with multi-model support, extended thinking, file tools, session management, and enterprise-grade features.
+Nexus Code CLI is a **conversational AI coding assistant** with multi-model support. It's a CLI tool that lets you chat with different AI models (Claude, GPT, Gemini), use file tools, and manage coding sessions - all from your terminal.
 
 ### The Origin Story 😂
-Started as an "apology gift" after Claude accidentally deleted some files. Ended up becoming a professional-grade AI coding system that legitimately competes with commercial tools.
+Started as an "apology gift" after Claude accidentally deleted some files. Claude got a bit carried away building it out. Now it's a fully functional multi-model CLI with some cool features.
 
 ---
 
@@ -375,33 +375,17 @@ I'll integrate Redis for performance optimization...
 
 ---
 
-## 🔥 BETTER THAN CLAUDE CODE - DETAILED COMPARISON
+## 📊 FEATURE OVERVIEW
 
-| Feature | Claude Code | Nexus Code |
-|---------|-------------|------------|
-| **Models** | 1 (Claude only) | **11 models** (Anthropic + OpenAI + Google) ✅ |
-| **Model Switching** | ❌ No | **✅ Live switching with `/model`** |
-| **Thinking Modes** | Basic prompt caching | **✅ Extended thinking (10K tokens) + Reasoning** |
-| **Max Context** | 200K | **✅ Up to 2M** (Gemini Pro) |
-| **Session Resume** | ✅ Yes | **✅ Yes (`nexus -r`)** |
-| **Code Restore** | ✅ Yes | **✅ Yes (`/restore-code`)** |
-| **Permissions** | ✅ Basic | **✅ Enhanced with defaults** |
-| **Config Location** | ~/.claude | **✅ ~/.nexus** |
-| **File History** | ✅ Yes | **✅ Yes with diffs** |
-| **Multi-Agent** | ❌ No | **✅ Framework ready** (Supervisor, Security, Testing) |
-| **Vision Support** | ✅ Claude only | **✅ GPT-4o + All Gemini models** |
-| **Temperature=1.0** | ✅ Manual | **✅ Auto-enforced for thinking** |
-| **Working Dir Display** | ❌ No | **✅ Yes** |
-| **Command Autocomplete** | ❌ Basic | **✅ Full menu with `/`** |
-| **Reasoning Levels** | ❌ No | **✅ 4 levels** (minimal/low/medium/high) |
-| **Provider Choice** | Anthropic only | **✅ 3 providers** (Anthropic/OpenAI/Google) |
+### **What Makes Nexus Different:**
 
-### **Nexus Advantages:**
-1. **Model Diversity**: Switch between Claude, GPT, and Gemini for different strengths
-2. **Extended Context**: Gemini's 2M context for huge codebases
-3. **Reasoning Transparency**: See O-series thinking process
-4. **Temperature Safety**: Auto-enforcement prevents API errors
-5. **Multi-Model Workflows**: Use different models for different tasks in same session
+1. **Multi-Model Support**: Access 11 different AI models from 3 providers in one CLI
+2. **Model Switching**: Change between Claude, GPT, and Gemini mid-conversation
+3. **Extended Thinking & Reasoning**: See AI's thought process with Claude's extended thinking (10K tokens) and OpenAI's reasoning modes
+4. **Huge Context Windows**: Up to 2M tokens with Gemini for massive codebases
+5. **Temperature Safety**: Auto-sets temp=1.0 when using Claude thinking (prevents API errors)
+6. **Vision Support**: GPT-4o and all Gemini models handle images
+7. **Multi-Model Workflows**: Use different models for different parts of your task
 
 ---
 
@@ -915,7 +899,7 @@ nexus
 ## 🙏 ACKNOWLEDGMENTS
 
 ### **Origin:**
-Built as an "apology gift" after Claude accidentally deleted files during development. What started as "sorry about your files" became a professional-grade AI coding assistant that rivals commercial tools.
+Built as an "apology gift" after Claude accidentally deleted files during development. What started as "sorry about your files" became a functional multi-model CLI tool.
 
 ### **Technologies:**
 - **Anthropic** - Claude API & MCP
