@@ -8,8 +8,25 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { glob } from 'glob';
 import { join, dirname } from 'path';
+import chalk from 'chalk';
 
 const execAsync = promisify(exec);
+
+/**
+ * Log tool usage (like Claude Code)
+ */
+function logToolCall(toolName: string, params: Record<string, any>): void {
+  const paramStr = Object.entries(params)
+    .map(([key, value]) => {
+      if (typeof value === 'string' && value.length > 60) {
+        return `${key}: "${value.substring(0, 57)}..."`;
+      }
+      return `${key}: ${JSON.stringify(value)}`;
+    })
+    .join(', ');
+
+  console.log(chalk.green(`● ${toolName}(${paramStr})`));
+}
 
 export interface ToolResult {
   success: boolean;
@@ -30,9 +47,24 @@ export class FileTools {
   private fileHistory: FileChange[] = [];
   private approvedCommands: string[] = [];
   private deniedCommands: string[] = [];
+  private verboseMode: boolean = true; // Show tool calls by default
 
   constructor(workingDirectory: string = process.cwd()) {
     this.workingDirectory = workingDirectory;
+  }
+
+  /**
+   * Enable/disable verbose mode
+   */
+  setVerbose(enabled: boolean): void {
+    this.verboseMode = enabled;
+  }
+
+  /**
+   * Get verbose mode state
+   */
+  isVerbose(): boolean {
+    return this.verboseMode;
   }
 
   /**
@@ -74,6 +106,13 @@ export class FileTools {
    * Read file
    */
   async read(filePath: string, offset?: number, limit?: number): Promise<ToolResult> {
+    if (this.verboseMode) {
+      const params: Record<string, any> = { file_path: filePath };
+      if (offset !== undefined) params.offset = offset;
+      if (limit !== undefined) params.limit = limit;
+      logToolCall('Read', params);
+    }
+
     try {
       const fullPath = join(this.workingDirectory, filePath);
 
@@ -126,6 +165,10 @@ export class FileTools {
    * Write file
    */
   async write(filePath: string, content: string): Promise<ToolResult> {
+    if (this.verboseMode) {
+      logToolCall('Write', { file_path: filePath, content_length: content.length });
+    }
+
     try {
       const fullPath = join(this.workingDirectory, filePath);
       const oldContent = existsSync(fullPath) ? readFileSync(fullPath, 'utf-8') : undefined;
@@ -161,6 +204,10 @@ export class FileTools {
     newString: string,
     replaceAll: boolean = false
   ): Promise<ToolResult> {
+    if (this.verboseMode) {
+      logToolCall('Edit', { file_path: filePath, old_string: oldString.substring(0, 40) + '...', new_string: newString.substring(0, 40) + '...', replace_all: replaceAll });
+    }
+
     try {
       const fullPath = join(this.workingDirectory, filePath);
 
@@ -216,6 +263,12 @@ export class FileTools {
    * Glob - find files by pattern
    */
   async globFiles(pattern: string, path?: string): Promise<ToolResult> {
+    if (this.verboseMode) {
+      const params: Record<string, any> = { pattern };
+      if (path) params.path = path;
+      logToolCall('Glob', params);
+    }
+
     try {
       const searchPath = path || this.workingDirectory;
       const matches = await glob(pattern, {
@@ -260,6 +313,10 @@ export class FileTools {
       filesOnly?: boolean;
     } = {}
   ): Promise<ToolResult> {
+    if (this.verboseMode) {
+      logToolCall('Grep', { pattern, ...options });
+    }
+
     try {
       const searchPath = options.path || this.workingDirectory;
 
@@ -309,6 +366,10 @@ export class FileTools {
       background?: boolean;
     } = {}
   ): Promise<ToolResult> {
+    if (this.verboseMode) {
+      logToolCall('Bash', { command, ...options });
+    }
+
     try {
       // Check if command is approved
       if (!this.isCommandApproved(command)) {

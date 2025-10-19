@@ -33,6 +33,7 @@ const COMMANDS = [
   { name: '/help', description: 'Show available commands' },
   { name: '/model', description: 'List and switch models' },
   { name: '/permissions', description: 'Manage command permissions' },
+  { name: '/verbose', description: 'Toggle verbose mode (show all tool calls)' },
   { name: '/restore-code', description: 'Restore code from history' },
   { name: '/add-dir', description: 'Add working directory' },
   { name: '/clear', description: 'Clear conversation history' },
@@ -349,6 +350,15 @@ async function handleCommand(command: string, state: CLIState): Promise<boolean>
 
     case '/add-dir':
       await addWorkingDirectory(state);
+      return true;
+
+    case '/verbose':
+      const newVerboseState = !state.fileTools.isVerbose();
+      state.fileTools.setVerbose(newVerboseState);
+      console.log();
+      console.log(chalk.yellow(`🔧 Verbose Mode: ${newVerboseState ? chalk.green('ON') : chalk.gray('OFF')}`));
+      console.log(chalk.gray(`   ${newVerboseState ? 'Will show all tool calls (Read, Write, Edit, etc)' : 'Tool calls hidden'}`));
+      console.log();
       return true;
 
     case '/clear':
