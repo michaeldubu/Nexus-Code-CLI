@@ -1,6 +1,6 @@
 /**
  * Nexus Code - Security Framework
- * Production-ready ABAC/ReBAC security with sandboxing
+ * ABAC/ReBAC security with sandboxing
  */
 import { EventEmitter } from 'events';
 import Docker from 'dockerode';

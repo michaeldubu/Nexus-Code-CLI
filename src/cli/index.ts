@@ -91,13 +91,8 @@ function printWelcome() {
   console.clear();
   console.log(chalk.cyan(banner));
   console.log(chalk.white('🚀 Starting Multi-Agent System...\n'));
-  console.log(chalk.gray('━'.repeat(65)));
-  console.log(chalk.white('  Commands:'));
-  console.log(chalk.gray('    /help     - Show available commands'));
-  console.log(chalk.gray('    /agents   - Show agent status'));
-  console.log(chalk.gray('    /clear    - Clear conversation history'));
-  console.log(chalk.gray('    /exit     - Exit Nexus Code'));
-  console.log(chalk.gray('━'.repeat(65)));
+  // Compact tip in corner
+  console.log(chalk.gray('  💡 /help for commands | /agents for status | /exit to quit'));
   console.log();
 }
 
@@ -276,7 +271,7 @@ async function startREPL(ctx: CLIContext): Promise<void> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: chalk.cyan('nexus> '),
+    prompt: chalk.cyan('> '),
   });
 
   rl.prompt();

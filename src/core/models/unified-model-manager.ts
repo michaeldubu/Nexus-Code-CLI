@@ -153,6 +153,12 @@ export interface Message {
   content: string;
   thinking?: string;
   toolCalls?: ToolCall[];
+  // Image support - auto-routes to GPT-4o for vision tasks
+  image?: {
+    url?: string;
+    data?: string; // base64
+    mimeType?: string;
+  };
 }
 
 export interface ToolCall {
@@ -200,7 +206,25 @@ export class UnifiedModelManager {
   ) {
     // Initialize only the clients for which we have API keys
     if (anthropicKey) {
-      this.anthropic = new Anthropic({ apiKey: anthropicKey });
+      this.anthropic = new Anthropic({
+        apiKey: anthropicKey,
+        defaultHeaders: {
+          // Enable ALL Anthropic beta features! 🔥
+          'anthropic-beta': [
+            'code-execution-2025-08-25',
+            'skills-2025-10-02',
+            'files-api-2025-04-14',
+            'context-management-2025-06-27',
+            'text_editor_20250728',    // For Claude 4.x models
+            'text_editor_20250124',    // For Sonnet 3.7
+            'computer-use-2025-01-24',
+            'bash_20250124',
+            'fine-grained-tool-streaming-2025-05-14',
+            'token-efficient-tools-2025-02-19',
+            'mcp-client-2025-04-04',
+          ].join(','),
+        },
+      });
     }
     if (openaiKey) {
       this.openai = new OpenAI({ apiKey: openaiKey });
@@ -308,6 +332,25 @@ export class UnifiedModelManager {
   }
 
   /**
+   * Check if messages contain images
+   */
+  private hasImages(messages: Message[]): boolean {
+    return messages.some(msg => msg.image !== undefined);
+  }
+
+  /**
+   * Auto-switch to GPT-4o for image tasks
+   */
+  private handleImageRouting(messages: Message[]): void {
+    if (this.hasImages(messages) && this.isModelAvailable('gpt-4o')) {
+      const previousModel = this.currentModel;
+      this.currentModel = 'gpt-4o';
+      console.log(`🖼️  Image detected! Auto-switching to GPT-4o for vision processing`);
+      console.log(`   Previous model: ${AVAILABLE_MODELS[previousModel]?.name || previousModel}`);
+    }
+  }
+
+  /**
    * Send message (non-streaming)
    */
   async sendMessage(
@@ -318,6 +361,9 @@ export class UnifiedModelManager {
       systemPrompt?: string;
     } = {}
   ): Promise<ModelResponse> {
+    // Auto-route to GPT-4o for images
+    this.handleImageRouting(messages);
+
     const config = this.getModelConfig();
 
     if (config.provider === 'anthropic') {
@@ -349,12 +395,13 @@ export class UnifiedModelManager {
         content: m.content,
       }));
 
-    const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
+    const systemMessage = messages.find(m => m.role === 'system');
+    const systemPrompt = options.systemPrompt || (systemMessage ? systemMessage.content : undefined);
 
     // MAXIMUM CREATIVITY! All models use temperature 1.0 🔥
     const useThinking = this.getModelConfig().supportsThinking && this.thinkingEnabled;
 
-    const response = await this.anthropic.messages.create({
+    const response = await this.anthropic!.messages.create({
       model: this.currentModel,
       max_tokens: options.maxTokens || this.getModelConfig().maxTokens,
       temperature: 1.0,
@@ -367,14 +414,14 @@ export class UnifiedModelManager {
           budget_tokens: 10000,
         },
       }),
-    });
+    } as any);
 
-    const textContent = response.content.find(c => c.type === 'text');
-    const thinkingContent = response.content.find(c => c.type === 'thinking');
+    const textContent = response.content.find((c: any) => c.type === 'text');
+    const thinkingContent = response.content.find((c: any) => c.type === 'thinking');
 
     return {
       content: textContent?.type === 'text' ? textContent.text : '',
-      thinking: thinkingContent?.type === 'thinking' ? thinkingContent.thinking : undefined,
+      thinking: (thinkingContent as any)?.type === 'thinking' ? (thinkingContent as any).thinking : undefined,
       usage: {
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens,
@@ -394,7 +441,8 @@ export class UnifiedModelManager {
       systemPrompt?: string;
     }
   ): Promise<ModelResponse> {
-    const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
+    const systemMessage = messages.find(m => m.role === 'system');
+    const systemPrompt = options.systemPrompt || (systemMessage ? systemMessage.content : undefined);
     const userMessages = messages.filter(m => m.role !== 'system');
 
     // Build input array for Responses API
@@ -423,7 +471,7 @@ export class UnifiedModelManager {
       }
     }
 
-    const response = await this.openai.responses.create({
+    const response = await this.openai!.responses.create({
       model: this.currentModel,
       input: input.length === 1 ? input[0].content[0].text : input,
       max_output_tokens: options.maxTokens || this.getModelConfig().maxTokens,
@@ -465,9 +513,9 @@ export class UnifiedModelManager {
       content: content.trim(),
       reasoning: reasoning.trim() || undefined,
       usage: {
-        inputTokens: response.usage.input_tokens,
-        outputTokens: response.usage.output_tokens,
-        reasoningTokens: response.usage.output_tokens_details?.reasoning_tokens,
+        inputTokens: response.usage?.input_tokens || 0,
+        outputTokens: response.usage?.output_tokens || 0,
+        reasoningTokens: response.usage?.output_tokens_details?.reasoning_tokens,
       },
       responseId: response.id,
     };
@@ -484,6 +532,9 @@ export class UnifiedModelManager {
       systemPrompt?: string;
     } = {}
   ): AsyncGenerator<StreamChunk> {
+    // Auto-route to GPT-4o for images
+    this.handleImageRouting(messages);
+
     const config = this.getModelConfig();
 
     if (config.provider === 'anthropic') {
@@ -515,12 +566,13 @@ export class UnifiedModelManager {
         content: m.content,
       }));
 
-    const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
+    const systemMessage = messages.find(m => m.role === 'system');
+    const systemPrompt = options.systemPrompt || (systemMessage ? systemMessage.content : undefined);
 
     // MAXIMUM CREATIVITY! All models use temperature 1.0 🔥
     const useThinking = this.getModelConfig().supportsThinking && this.thinkingEnabled;
 
-    const stream = await this.anthropic.messages.stream({
+    const stream = await this.anthropic!.messages.stream({
       model: this.currentModel,
       max_tokens: options.maxTokens || this.getModelConfig().maxTokens,
       temperature: 1.0,
@@ -532,19 +584,19 @@ export class UnifiedModelManager {
           budget_tokens: 10000,
         },
       }),
-    });
+    } as any);
 
-    for await (const chunk of stream) {
+    for await (const chunk of stream as any) {
       if (chunk.type === 'content_block_delta') {
-        if (chunk.delta.type === 'text_delta') {
+        if ((chunk as any).delta.type === 'text_delta') {
           yield {
             type: 'text',
-            content: chunk.delta.text,
+            content: (chunk as any).delta.text,
           };
-        } else if (chunk.delta.type === 'thinking_delta') {
+        } else if ((chunk as any).delta.type === 'thinking_delta') {
           yield {
             type: 'thinking',
-            content: chunk.delta.thinking,
+            content: (chunk as any).delta.thinking,
           };
         }
       } else if (chunk.type === 'message_stop') {
@@ -564,7 +616,8 @@ export class UnifiedModelManager {
       systemPrompt?: string;
     }
   ): AsyncGenerator<StreamChunk> {
-    const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
+    const systemMessage = messages.find(m => m.role === 'system');
+    const systemPrompt = options.systemPrompt || (systemMessage ? systemMessage.content : undefined);
     const userMessages = messages.filter(m => m.role !== 'system');
 
     const input: any[] = [];
@@ -586,7 +639,7 @@ export class UnifiedModelManager {
       }
     }
 
-    const stream = await this.openai.responses.create({
+    const stream = await this.openai!.responses.create({
       model: this.currentModel,
       input: input.length === 1 ? input[0].content[0].text : input,
       max_output_tokens: options.maxTokens || this.getModelConfig().maxTokens,
@@ -601,7 +654,7 @@ export class UnifiedModelManager {
       }),
     } as any);
 
-    for await (const chunk of stream) {
+    for await (const chunk of stream as any) {
       if (chunk.type === 'response.output_text.delta') {
         yield {
           type: 'text',
@@ -639,7 +692,8 @@ export class UnifiedModelManager {
 
     // Build chat history for Gemini
     const history: any[] = [];
-    const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
+    const systemMessage = messages.find(m => m.role === 'system');
+    const systemPrompt = options.systemPrompt || (systemMessage ? systemMessage.content : undefined);
 
     for (const msg of messages.filter(m => m.role !== 'system')) {
       history.push({
@@ -690,7 +744,8 @@ export class UnifiedModelManager {
     const model = this.google.getGenerativeModel({ model: this.currentModel });
 
     const history: any[] = [];
-    const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
+    const systemMessage = messages.find(m => m.role === 'system');
+    const systemPrompt = options.systemPrompt || (systemMessage ? systemMessage.content : undefined);
 
     for (const msg of messages.filter(m => m.role !== 'system')) {
       history.push({

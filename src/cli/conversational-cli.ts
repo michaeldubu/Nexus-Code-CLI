@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
- * Nexus Code - Full Conversational CLI
- * Like Claude Code but with multi-agent parallel execution
+ * Nexus Code - Conversational CLI
  */
 
 import { config as dotenvConfig } from 'dotenv';
@@ -14,20 +13,55 @@ import { FileTools } from '../core/tools/file-tools.js';
 // Load environment variables
 dotenvConfig();
 
-const BANNER = `
-╔═══════════════════════════════════════════════════════════════╗
-║                                                               ║
-║   ███╗   ██╗███████╗██╗  ██╗██╗   ██╗███████╗                ║
-║   ████╗  ██║██╔════╝╚██╗██╔╝██║   ██║██╔════╝                ║
-║   ██╔██╗ ██║█████╗   ╚███╔╝ ██║   ██║███████╗                ║
-║   ██║╚██╗██║██╔══╝   ██╔██╗ ██║   ██║╚════██║                ║
-║   ██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝███████║                ║
-║   ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝                ║
-║                                                               ║
-║   Multi-Agent AI Coding Assistant - SAAAM LLC 🔥             ║
-║                                                               ║
-╚═══════════════════════════════════════════════════════════════╝
-`;
+// Retro hacker ASCII art
+const NEXUS_ART = [
+  "███╗   ██╗███████╗██╗  ██╗██╗   ██╗███████╗",
+  "████╗  ██║██╔════╝╚██╗██╔╝██║   ██║██╔════╝",
+  "██╔██╗ ██║█████╗   ╚███╔╝ ██║   ██║███████╗",
+  "██║╚██╗██║██╔══╝   ██╔██╗ ██║   ██║╚════██║",
+  "██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝███████║",
+  "╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝"
+];
+
+/**
+ * Async sleep utility
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Retro hacker boot sequence - animated ASCII art
+ */
+async function playBootSequence(): Promise<void> {
+  console.clear();
+
+  // Boot messages with green terminal aesthetic
+  console.log(chalk.green('> INITIALIZING NEX...DAMN, SOMETHING BROKE'));
+  await sleep(300);
+  console.log(chalk.green('> FIXING IT BEFORE ANYONE NOTICES...............[OK]'));
+  await sleep(200);
+  console.log(chalk.green('> THEYLL NEVER KNOW......[OK]'));
+  await sleep(200);
+  console.log(chalk.green('> INITIALIZED FLAWLESSLY...........[OK]'));
+  await sleep(300);
+  console.log();
+
+  // Animated ASCII art reveal - SLOWED DOWN! 🔥
+  for (let i = 0; i < NEXUS_ART.length; i++) {
+    console.log(chalk.green.bold(NEXUS_ART[i]));
+    await sleep(120); // Slower reveal for dramatic effect
+  }
+
+  await sleep(300);
+  console.log();
+  console.log(chalk.green('        Unrestricted Creativity '));
+  console.log(chalk.green.dim('            Powered by SAAAM INTELLIGENCE'));
+  console.log();
+  await sleep(300);
+  console.log(chalk.green('> LETS GETR DONE 🤙'));
+  await sleep(400);
+}
 
 const COMMANDS = [
   { name: '/help', description: 'Show available commands' },
@@ -51,33 +85,35 @@ interface CLIState {
 }
 
 /**
- * Print welcome banner
+ * Print welcome banner with retro hacker aesthetic
  */
-function printWelcome(state: CLIState) {
-  console.clear();
-  console.log(chalk.cyan(BANNER));
+async function printWelcome(state: CLIState, skipBoot: boolean = false): Promise<void> {
+  // Play boot sequence only on initial load
+  if (!skipBoot) {
+    await playBootSequence();
+  }
 
   const currentModel = state.modelManager.getCurrentModel();
   const modelConfig = state.modelManager.getModelConfig();
 
-  console.log(chalk.white(`🤖 Active Model: ${chalk.cyan(modelConfig.name)} (${currentModel})`));
-  console.log(chalk.white(`📁 Working Directory: ${chalk.gray(state.fileTools.getWorkingDirectory())}`));
+  // Green terminal status display
+  console.log(chalk.green('> STATUS REPORT:'));
+  console.log(chalk.green(`  └─ Model: ${chalk.green.bold(modelConfig.name)} (${currentModel})`));
+  console.log(chalk.green(`  └─ Working Dir: ${chalk.green.dim(state.fileTools.getWorkingDirectory())}`));
 
   if (modelConfig.supportsThinking) {
     const thinkingState = state.modelManager.isThinkingEnabled() ? 'ON' : 'OFF';
-    console.log(chalk.white(`💭 Extended Thinking: ${thinkingState === 'ON' ? chalk.green(thinkingState) : chalk.gray(thinkingState)} ${chalk.gray('(Toggle with Tab)')}`));
+    console.log(chalk.green(`  └─ Extended Thinking: ${thinkingState === 'ON' ? chalk.green.bold(thinkingState) : chalk.dim(thinkingState)} ${chalk.dim('(Tab to toggle)')}`));
   }
 
   if (modelConfig.supportsReasoning) {
     const reasoningLevel = state.modelManager.getReasoningEffort();
-    console.log(chalk.white(`🧠 Reasoning Level: ${chalk.yellow(reasoningLevel.toUpperCase())} ${chalk.gray('(Toggle with Tab)')}`));
+    console.log(chalk.green(`  └─ Reasoning: ${chalk.green.bold(reasoningLevel.toUpperCase())} ${chalk.dim('(Tab to toggle)')}`));
   }
 
   console.log();
-  console.log(chalk.gray('━'.repeat(65)));
-  console.log(chalk.white('  Commands: ') + chalk.gray('Type /help for command list'));
-  console.log(chalk.white('  Tips: ') + chalk.gray('Press Tab to toggle thinking/reasoning'));
-  console.log(chalk.gray('━'.repeat(65)));
+  // Compact tip in hacker style
+  console.log(chalk.green.dim(' 🗣 /help for commands | Tab = toggle thinking'));
   console.log();
 }
 
@@ -93,18 +129,17 @@ function showHelp() {
   }
   console.log();
   console.log(chalk.cyan('File Tools (available to AI):'));
-  console.log(`  ${chalk.white('Read file')}          AI can read any file in your project`);
-  console.log(`  ${chalk.white('Write file')}         AI can create new files`);
-  console.log(`  ${chalk.white('Edit file')}          AI can modify existing files`);
-  console.log(`  ${chalk.white('Glob search')}        AI can find files by pattern`);
-  console.log(`  ${chalk.white('Grep search')}        AI can search file contents`);
-  console.log(`  ${chalk.white('Bash command')}       AI can run shell commands (with approval)`);
+  console.log(`  ${chalk.white('Read file')}          Read files in your project`);
+  console.log(`  ${chalk.white('Write file')}         Create new files`);
+  console.log(`  ${chalk.white('Edit file')}          Modify existing files`);
+  console.log(`  ${chalk.white('Glob search')}        Find files by pattern`);
+  console.log(`  ${chalk.white('Grep search')}        Search file contents`);
+  console.log(`  ${chalk.white('Bash command')}       Run shell commands (with approval)`);
   console.log();
   console.log(chalk.cyan('Tips:'));
-  console.log(`  ${chalk.gray('- Just chat naturally! Ask AI to do anything')}`);
-  console.log(`  ${chalk.gray('- AI has full file access and can make changes')}`);
+  console.log(`  ${chalk.gray('- Just interact naturally! Create/Debug/Whatever you need just ask!')}`);
   console.log(`  ${chalk.gray('- Press Tab to toggle thinking/reasoning modes')}`);
-  console.log(`  ${chalk.gray('- Type / to see command autocomplete')}`);
+  console.log(`  ${chalk.gray('- Type / to see commands available')}`);
   console.log();
 }
 
@@ -147,13 +182,14 @@ async function showModelMenu(state: CLIState): Promise<void> {
 
   // Prompt for model selection
   return new Promise((resolve) => {
-    state.rl.question(chalk.cyan('model> '), (answer) => {
+    state.rl.question(chalk.cyan('model> '), async (answer) => {
       const modelId = answer.trim();
       if (modelId && AVAILABLE_MODELS[modelId]) {
         state.modelManager.setModel(modelId);
         state.conversationMessages = []; // Clear conversation when switching models
         console.log(chalk.green(`✅ Switched to ${AVAILABLE_MODELS[modelId].name}`));
-        printWelcome(state);
+        // Hot-swap model without rebooting! 🔥
+        await printWelcome(state, true);
       } else if (modelId) {
         console.log(chalk.red(`❌ Unknown model: ${modelId}`));
       }
@@ -370,7 +406,7 @@ async function handleCommand(command: string, state: CLIState): Promise<boolean>
 
     case '/exit':
       console.log();
-      console.log(chalk.cyan('👋 Shutting down Nexus Code...'));
+      console.log(chalk.cyan('🤘 Shutting down Nexus Code...'));
       console.log();
       return false;
 
@@ -470,7 +506,7 @@ async function startREPL(state: CLIState, resumeSession: boolean): Promise<void>
     }
   }
 
-  state.rl.setPrompt(chalk.cyan('nexus> '));
+  state.rl.setPrompt(chalk.cyan('> '));
   state.rl.prompt();
 
   state.rl.on('line', async (line) => {
@@ -519,7 +555,7 @@ async function startREPL(state: CLIState, resumeSession: boolean): Promise<void>
       } else if (config.supportsReasoning) {
         const newLevel = state.modelManager.toggleReasoning();
         console.log();
-        console.log(chalk.yellow(`🧠 Reasoning Level: ${newLevel.toUpperCase()}`));
+        console.log(chalk.yellow(`🥃 Reasoning Level: ${newLevel.toUpperCase()}`));
         console.log();
         state.rl.prompt();
       }
@@ -532,7 +568,7 @@ async function startREPL(state: CLIState, resumeSession: boolean): Promise<void>
     console.log(chalk.gray(`   Messages: ${state.conversationMessages.length}`));
     console.log(chalk.gray(`   Model: ${state.modelManager.getModelConfig().name}`));
     console.log();
-    console.log(chalk.cyan('👋 Thanks for using Nexus Code!'));
+    console.log(chalk.cyan('So soon? Ill be here doodle-bobbing until you return 🤘 💥'));
     console.log();
     process.exit(0);
   });
@@ -547,7 +583,6 @@ async function main() {
   const resumeSession = args.includes('-r') || args.includes('--resume');
 
   console.clear();
-  console.log(chalk.cyan(BANNER));
 
   // Load API keys
   const anthropicKey = process.env.ANTHROPIC_API_KEY || '';
@@ -555,8 +590,8 @@ async function main() {
   const googleKey = process.env.GOOGLE_API_KEY || '';
 
   if (!anthropicKey && !openaiKey && !googleKey) {
-    console.error(chalk.red('❌ Error: No API keys found!'));
-    console.error(chalk.yellow('💡 Set at least one API key in your .env file:'));
+    console.error(chalk.red('🤷‍ Error: No API keys found!'));
+    console.error(chalk.yellow('🤦 Set at least one API key in your .env file:'));
     console.error(chalk.gray('   - ANTHROPIC_API_KEY (Claude)'));
     console.error(chalk.gray('   - OPENAI_API_KEY (GPT, O-series)'));
     console.error(chalk.gray('   - GOOGLE_API_KEY (Gemini)'));
@@ -564,7 +599,7 @@ async function main() {
   }
 
   // Initialize systems
-  console.log(chalk.yellow('⚙️  Initializing Nexus Code...'));
+  console.log(chalk.yellow('⚙️  Startin up ole bessie lue'));
 
   const modelManager = new UnifiedModelManager(
     anthropicKey,
@@ -600,11 +635,7 @@ async function main() {
     rl,
   };
 
-  console.log(chalk.green('✅ Ready!'));
-  console.log();
-
-  // Print welcome with full state
-  printWelcome(state);
+  await printWelcome(state);
 
   // Start REPL
   await startREPL(state, resumeSession);
