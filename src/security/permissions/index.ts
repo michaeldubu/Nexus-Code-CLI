@@ -1,6 +1,6 @@
 /**
  * Nexus Code - Security Framework
- * Production-ready ABAC/ReBAC security with sandboxing
+ * ABAC/ReBAC security with sandboxing
  */
 
 import { EventEmitter } from 'events';
@@ -220,7 +220,7 @@ export class SandboxManager extends EventEmitter {
         HostConfig: {
           Memory: this.parseMemoryLimit(config.memoryLimit || '512m'),
           NanoCpus: (config.cpuLimit || 1) * 1e9,
-          Binds: config.volumeMounts?.map(m => 
+          Binds: config.volumeMounts?.map(m =>
             `${m.source}:${m.target}${m.readonly ? ':ro' : ''}`
           ) || [],
           // Security options
@@ -258,7 +258,7 @@ export class SandboxManager extends EventEmitter {
       });
 
       const stream = await exec.start({ Detach: false });
-      
+
       let output = '';
       stream.on('data', (chunk: Buffer) => {
         output += chunk.toString();
@@ -288,10 +288,10 @@ export class SandboxManager extends EventEmitter {
     try {
       await sandbox.container.stop();
       await sandbox.container.remove();
-      
+
       this.activeSandboxes.delete(sessionId);
       this.emit('sandbox:destroyed', { sessionId });
-      
+
       return success(undefined);
     } catch (error) {
       return failure(error as Error);

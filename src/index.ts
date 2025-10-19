@@ -4,7 +4,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { NexusConfig, AgentRole, Task, TaskPriority, Result, success, failure } from './core/types/index.js';
+import { NexusConfig, AgentRole, Task, TaskPriority, Result, success, failure, PermissionAction, ResourceType } from './core/types/index.js';
 import { JsonRpcServer, RpcServerConfig } from './core/rpc/server.js';
 import { MCPServer } from './core/mcp/client.js';
 import { AgentOrchestrator, OrchestratorConfig } from './core/orchestration/orchestrator.js';
@@ -153,16 +153,16 @@ export class NexusCode extends EventEmitter {
         {
           id: 'read-files',
           subject: '*',
-          action: 'read',
-          resource: 'file',
+          action: PermissionAction.READ,
+          resource: ResourceType.FILE,
           resourcePattern: '**/*',
           effect: 'allow',
         },
         {
           id: 'write-files',
           subject: '*',
-          action: 'write',
-          resource: 'file',
+          action: PermissionAction.WRITE,
+          resource: ResourceType.FILE,
           resourcePattern: '/home/claude/**/*',
           effect: 'allow',
         },
@@ -180,8 +180,8 @@ export class NexusCode extends EventEmitter {
           {
             id: 'terminal-execute',
             subject: 'role=admin',
-            action: 'execute',
-            resource: 'terminal',
+            action: PermissionAction.EXECUTE,
+            resource: ResourceType.TERMINAL,
             resourcePattern: '*',
             effect: 'allow',
           },

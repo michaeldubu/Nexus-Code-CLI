@@ -434,12 +434,12 @@ export abstract class BaseAgent extends EventEmitter {
  * Agent Factory - Creates agents based on role
  */
 export class AgentFactory {
-  private static agentClasses = new Map<AgentRole, typeof BaseAgent>();
+  private static agentClasses = new Map<AgentRole, new (config: AgentConfig) => BaseAgent>();
 
   /**
    * Register an agent class for a role
    */
-  static register(role: AgentRole, agentClass: typeof BaseAgent): void {
+  static register(role: AgentRole, agentClass: new (config: AgentConfig) => BaseAgent): void {
     this.agentClasses.set(role, agentClass);
   }
 

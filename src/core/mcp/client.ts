@@ -15,6 +15,9 @@ import {
   failure,
 } from '../types/index.js';
 
+// Re-export types for external use
+export type { MCPTool };
+
 export interface MCPConfig {
   anthropicApiKey: string;
   model: string;

@@ -418,10 +418,26 @@ Output Format:
     priority: string,
     context?: any,
   ): Promise<Result<DelegationDecision>> {
+    // Convert string priority to TaskPriority enum
+    let taskPriority: TaskPriority;
+    switch (priority.toLowerCase()) {
+      case 'critical':
+        taskPriority = TaskPriority.CRITICAL;
+        break;
+      case 'high':
+        taskPriority = TaskPriority.HIGH;
+        break;
+      case 'low':
+        taskPriority = TaskPriority.LOW;
+        break;
+      default:
+        taskPriority = TaskPriority.MEDIUM;
+    }
+
     const decision: DelegationDecision = {
       taskId,
       targetRole,
-      priority: priority as TaskPriority,
+      priority: taskPriority,
       reasoning: `Task delegated to ${targetRole} based on capabilities`,
     };
 
