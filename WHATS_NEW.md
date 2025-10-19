@@ -1,12 +1,8 @@
-# 🚀 Nexus Code - Full Conversational CLI
-
-## What We Just Built
-
-We transformed Nexus Code from a multi-agent library into a **fully conversational AI coding assistant** - like Claude Code but **BETTER** with multi-model support, parallel agent execution, and enterprise features!
+# 🚀 Nexus Code - Conversational CLI
 
 ---
 
-## ✅ ALL Features Implemented
+## ✅  Features 
 
 ### 🤖 **Multi-Model Support**
 - **8 Models Available**: Claude Sonnet 4.5, Haiku 4.5, GPT-5, GPT-5 Mini, GPT-4.1, GPT-4o, O3, O4-Mini
@@ -63,35 +59,19 @@ We transformed Nexus Code from a multi-agent library into a **fully conversation
 
 ---
 
-## 🔥 How It's Better Than Claude Code
-
-| Feature | Claude Code | **Nexus Code** |
-|---------|-------------|----------------|
-| **Models** | Claude only | ✅ **8 models** (Claude + GPT + O-series) |
-| **Model Switching** | No | ✅ **Live switching** with /model |
-| **Thinking Modes** | Basic | ✅ **Extended thinking + reasoning** |
-| **Streaming** | Yes | ✅ **Better** (thinking + reasoning streams) |
-| **File Tools** | Yes | ✅ **Same tools** (Read, Write, Edit, Bash, Glob, Grep) |
-| **Permissions** | Basic | ✅ **Full system** with approved/denied lists |
-| **Session Resume** | No | ✅ **Full resume** with `-r` flag |
-| **History** | No | ✅ **Complete** in .nexus/ |
-| **Restore Code** | No | ✅ **Fork from any point** with /restore-code |
-| **Multi-Agent** | No | ✅ **3-5 agents in parallel** (framework ready) |
-
----
-
 ## 🚀 How to Use
 
 ### Starting Nexus
 
-```bash
-cd ~/Documents/GitHub/Nexus-Code-CLI
-
 # Fresh session
+run 'nexus' in terminal 
+or
 npm run cli
 
 # Resume last session
-npm run cli -- -r
+nexus -r
+or
+npm run cli -r
 ```
 
 ### Example Conversations
@@ -138,19 +118,19 @@ Nexus-Code-CLI/
 ├── src/
 │   ├── core/
 │   │   ├── models/
-│   │   │   └── unified-model-manager.ts      ✨ NEW - Multi-model support
+│   │   │   └── unified-model-manager.ts      
 │   │   ├── filesystem/
-│   │   │   └── nexus-fs.ts                    ✨ NEW - Session management
+│   │   │   └── nexus-fs.ts                   
 │   │   └── tools/
-│   │       └── file-tools.ts                  ✨ NEW - File access tools
+│   │       └── file-tools.ts                  
 │   └── cli/
-│       └── conversational-cli.ts              ✨ NEW - Full conversational CLI
-├── .nexus/                                    ✨ NEW - Auto-created
+│       └── conversational-cli.ts              
+├── .nexus/                                    
 │   ├── setup.json
 │   ├── conversations/
 │   ├── file-history/
 │   └── logs/
-└── .env                                       ✅ Updated with OpenAI key
+└── .env 
 ```
 
 ### Updated Files
@@ -203,8 +183,11 @@ for await (const chunk of manager.streamMessage(messages)) {
 
 ### .env File
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-svcacct-...
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+OLLAMA_API_KET=
+GEMINI_API_KEY=
+
 ```
 
 ### .nexus/setup.json
@@ -277,7 +260,7 @@ nexus>
 Ready to use! Just run:
 
 ```bash
-cd ~/Documents/GitHub/Nexus-Code-CLI
+cd ~/Nexus-Code-CLI
 npm run cli
 ```
 
@@ -293,8 +276,3 @@ nexus  # Run from anywhere!
 
 ## 🔥 Built by SAAAM LLC
 
-**"Don't give a shit - Build Cool Shit"** 🤙
-
-From an "apology gift" to a legit AI coding assistant that rivals (and beats!) Claude Code!
-
-This is production-ready, fully functional, and ready to ship! 🚀
