@@ -9,6 +9,8 @@ import chalk from 'chalk';
 import { UnifiedModelManager, AVAILABLE_MODELS, Message } from '../core/models/unified-model-manager.js';
 import { NexusFileSystem } from '../core/filesystem/nexus-fs.js';
 import { FileTools } from '../core/tools/file-tools.js';
+import { createNexusCode, NexusCode } from '../index.js';
+import { NexusConfig } from '../core/types/index.js';
 
 // Load environment variables
 dotenvConfig();
@@ -75,13 +77,15 @@ const COMMANDS = [
 ];
 
 interface CLIState {
-  modelManager: UnifiedModelManager;
+  nexus: NexusCode; // Multi-agent system
+  modelManager: UnifiedModelManager; // Keep for now for UI compat
   fileSystem: NexusFileSystem;
   fileTools: FileTools;
   conversationMessages: Message[];
   showThinking: boolean;
   showReasoning: boolean;
   rl: readline.Interface;
+  agentStatus: Map<string, string>; // Track active agents
 }
 
 /**
@@ -601,6 +605,64 @@ async function main() {
   // Initialize systems
   console.log(chalk.yellow('⚙️  Startin up ole bessie lue'));
 
+  // Create multi-agent system 🔥
+  const nexusConfig: NexusConfig = {
+    maxConcurrentAgents: 5,
+    maxTasksPerAgent: 3,
+    defaultTimeout: 300000,
+    anthropicApiKey: anthropicKey,
+    model: 'claude-sonnet-4-5-20250929',
+    maxTokens: 64000,
+    temperature: 1.0,
+    security: {
+      enableSandbox: false,
+      sandboxType: 'docker',
+      autoApprove: true,
+      permissionMode: 'permissive',
+    },
+    logging: {
+      level: 'info',
+      auditEnabled: true,
+      provenanceTracking: true,
+    },
+    ui: {
+      terminal: true,
+      colorEnabled: true,
+      verboseOutput: false,
+    },
+  };
+
+  const nexusResult = await createNexusCode(nexusConfig);
+  if (!nexusResult.success) {
+    console.error(chalk.red(`❌ Failed to initialize Nexus: ${nexusResult.error?.message}`));
+    process.exit(1);
+  }
+
+  const nexus = nexusResult.data;
+  await nexus.initialize();
+
+  // Setup event listeners to show agent collaboration 🔥
+  nexus.on('agents:initialized', (data) => {
+    console.log(chalk.green(`✅ Initialized ${data.count} agents`));
+  });
+
+  nexus.on('task:started', (data) => {
+    console.log(chalk.cyan(`  🔨 ${data.agentRole || 'Agent'} started task: ${data.taskDescription || data.taskId}`));
+  });
+
+  nexus.on('task:completed', (data) => {
+    console.log(chalk.green(`  ✅ ${data.agentRole || 'Agent'} completed task`));
+  });
+
+  nexus.on('task:failed', (data) => {
+    console.log(chalk.red(`  ❌ ${data.agentRole || 'Agent'} failed: ${data.error?.message}`));
+  });
+
+  nexus.on('task:delegated', (data) => {
+    console.log(chalk.yellow(`  📤 Supervisor delegated to ${data.targetRole}`));
+  });
+
+  // Keep UnifiedModelManager for UI compatibility (for now)
   const modelManager = new UnifiedModelManager(
     anthropicKey,
     openaiKey,
@@ -626,6 +688,7 @@ async function main() {
   });
 
   const state: CLIState = {
+    nexus,
     modelManager,
     fileSystem,
     fileTools,
@@ -633,6 +696,7 @@ async function main() {
     showThinking: modelManager.isThinkingEnabled(),
     showReasoning: true,
     rl,
+    agentStatus: new Map(),
   };
 
   await printWelcome(state);

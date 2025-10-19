@@ -163,7 +163,7 @@ export class NexusCode extends EventEmitter {
           subject: '*',
           action: PermissionAction.WRITE,
           resource: ResourceType.FILE,
-          resourcePattern: '/home/claude/**/*',
+          resourcePattern: '/home/.nexus/**/*',
           effect: 'allow',
         },
       ],
