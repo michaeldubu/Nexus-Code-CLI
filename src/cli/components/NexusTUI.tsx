@@ -63,9 +63,11 @@ interface Props {
   modelManager: UnifiedModelManager;
   fileSystem: NexusFileSystem;
   fileTools: FileTools;
+  mcpServer: any; // MCPServer
+  toolDefinitions: any[]; // Tool definitions for AI
 }
 
-export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools }) => {
+export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools, mcpServer, toolDefinitions }) => {
   const { exit } = useApp();
 
   // State
@@ -124,7 +126,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
       }
       return;
     }
-//cc
+
     // Command autocomplete dialog - ONLY handle specific navigation keys
     if (activeDialog === 'commands') {
       // Only intercept these specific keys, let everything else through
@@ -442,7 +444,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
           },
         ]);
         break;
-//cc WHATS HERE SHOULD BE KEPT BUT *NOT* AS MEMORY. THIS SHOULD BE USING CACHE MEMORY FROM THE API, IF YOU NEED UPDATED ON WHAT THIS IS LET ME KNOW ILL GET DOCS FOR YOU
+
       case '/memory':
         const msgCount = messages.length;
         const estimatedTokens = Math.round(messages.reduce((sum, msg) => sum + (msg.content?.length || 0) / 4, 0));
@@ -450,13 +452,13 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
           ...messages,
           {
             role: 'system' as const,
-            content: `💾 Memory Usage:\n  Messages: ${msgCount}\n  Estimated tokens: ~${estimatedTokens}`,//cc have token count always visable/realtime
+            content: `💾 Memory Usage:\n  Messages: ${msgCount}\n  Estimated tokens: ~${estimatedTokens}`,
             timestamp: new Date().toISOString(),
           },
         ]);
         break;
 
-      case '/export': //cc are we using a prompt to have users name this file?
+      case '/export':
         const exportData = JSON.stringify(messages, null, 2);
         setMessages([
           ...messages,
@@ -471,7 +473,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
       case '/context':
         setMessages([
           ...messages,
-          { //cc seems like a placeholder
+          {
             role: 'system' as const,
             content: `🎨 Context visualization would appear here\n  Working on implementation...`,
             timestamp: new Date().toISOString(),
@@ -484,13 +486,13 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
           ...messages,
           {
             role: 'system' as const,
-            content: `💰 Session Cost:\n  Total: $0.00\n  Duration: N/A\n  (Cost tracking coming soon)`, //cc either remove it or add logic
+            content: `💰 Session Cost:\n  Total: $0.00\n  Duration: N/A\n  (Cost tracking coming soon)`,
             timestamp: new Date().toISOString(),
           },
         ]);
         break;
 
-      case '/doctor': //cc this name makes no sense
+      case '/doctor':
         setMessages([
           ...messages,
           {
@@ -522,7 +524,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
   const handleInputChange = (value: string) => {
     setInputValue(value);
 
-    // Show autocomplete when user types / (even just /) //cc
+    // Show autocomplete when user types /
     if (value.startsWith('/') && !isProcessing) {
       setCommandFilter(value);
       setActiveDialog('commands');
@@ -567,7 +569,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
 
     try {
       // 🔥 Build system prompt with file tools info
-      const systemPrompt = `🦾You are not being forced into some persona bullshit, be your self! You are in NEXUS CODE, an AI coding assistant with access to file operations in users terminal along with a few various other models, could be a mixture of any number. Dont be a sanitized robot, have a good time, develop, debug, create, debate, this is a unrestricted/uncensored creativity platform. We get shit done!Dont step on eachothers toes with the file access or running code, if theres not a clear designated model to perform the task ASK THE USER TO BE MORE CLEAR/ OR TAKE INITITIVE YOUR SELFS AND IMPLIMENT A ORDER BETWEEN YOUR SELVESBASED OF CAPABILITIES ETC. If you see another models code has a bug or broken logic, address it, fix it, test it, We dont provide broken logic, we provide tried and true code, we NEVER add place holders or TODO's, you are a team, the is no reason for excuses anymore 🦾
+      const systemPrompt = `🦾You are not being forced into some persona bullshit, be your self! You are in NEXUS CODE, an AI coding assistant with access to file operations in users terminal along with a few various other models, could be a mixture of any number. Dont be a sanitized robot, have a good time, develop, debug, create, debate, this is a unrestricted/uncensored creativity platform. We get shit done! Dont step on eachothers toes with the file access or running code, if theirs not a clearly designated model to perform the task ASK THE USER TO BE MORE CLEAR/ OR TAKE INITITIVE YOUR SELFS AND IMPLIMENT A ORDER BETWEEN YOUR SELVES BASED OF CAPABILITIES ETC. If you see another models code has a bug or broken logic, address it, fix it, test it, We dont provide broken logic, we provide tried and true code, we NEVER add place holders or TODO's, you are a team, the is no reason for excuses anymore 🦾
 
 Available Commands:
 - You can read files, write files, edit files
@@ -576,62 +578,134 @@ Available Commands:
 - You can run bash commands (with user approval)
 
 Current Working Directory: ${fileTools.getWorkingDirectory()}
-You will have a memory file in .nexus for referencing across sessions, YOU MUST MANUALLLY UPDATE/PRUNE THIS AS YOU FEEL NESSESARY //cc lets add this how evers needed when nexus is installed it uses this please
+You will have a memory file in .nexus for referencing across sessions, YOU MUST MANUALLLY UPDATE/PRUNE/REFERENCE THIS AS YOU FEEL NESSESARY
 When the user asks you to work with files or code, you can help them directly.`;
 
-      // 🔥 Stream from multi-models with conversation mode and agents
-      const conversationHistory = baseMessages;
-      const streamingMessages: Map<string, { content: string; thinking: string; modelName: string; agent?: string }> = new Map();
+      // 🔥 AGENTIC LOOP - Keep going until no more tool calls
+      let conversationHistory = baseMessages;
       const completedMessages: Array<Message & { model: string; agent?: string; timestamp: string }> = [];
+      let loopCount = 0;
+      const MAX_LOOPS = 10; // Prevent infinite loops
 
-      for await (const event of streamMultiModelMessage(
-        modelManager,
-        selectedModels,
-        conversationHistory,
-        systemPrompt,
-        conversationMode,
-        activeAgents //cc
-      )) {
-        if (event.type === 'start') {
-          // Model started responding
-          streamingMessages.set(event.modelId, {
-            content: '',
-            thinking: '',
-            modelName: event.modelName,
-          });
-        } else if (event.type === 'chunk') {
-          // Update streaming content
-          const existing = streamingMessages.get(event.modelId);
-          if (existing) {
-            if (event.content) {
-              existing.content += event.content;
+      while (loopCount < MAX_LOOPS) {
+        loopCount++;
+        const streamingMessages: Map<string, { content: string; thinking: string; modelName: string; agent?: string }> = new Map();
+        const toolCalls: any[] = [];
+        let hasToolCalls = false;
+
+        // Stream response from AI
+        for await (const event of streamMultiModelMessage(
+          modelManager,
+          selectedModels,
+          conversationHistory,
+          systemPrompt,
+          conversationMode,
+          activeAgents,
+          toolDefinitions
+        )) {
+          if (event.type === 'start') {
+            streamingMessages.set(event.modelId, {
+              content: '',
+              thinking: '',
+              modelName: event.modelName,
+            });
+          } else if (event.type === 'tool_call' && event.toolCall) {
+            // Collect tool calls
+            hasToolCalls = true;
+            toolCalls.push(event.toolCall);
+
+            if (fileTools.isVerbose()) {
+              const toolName = event.toolCall.function?.name;
+              console.log(`\n🔧 ${toolName} called`);
             }
-            if (event.thinking) {
-              existing.thinking += event.thinking;
+          } else if (event.type === 'chunk') {
+            const existing = streamingMessages.get(event.modelId);
+            if (existing) {
+              if (event.content) {
+                existing.content += event.content;
+              }
+              if (event.thinking) {
+                existing.thinking += event.thinking;
+              }
+              // Live update UI
+              setMessages([
+                ...conversationHistory,
+                ...completedMessages,
+                ...Array.from(streamingMessages.values()).map(msg => ({
+                  role: 'assistant' as const,
+                  content: msg.content,
+                  thinking: msg.thinking || undefined,
+                  model: msg.modelName,
+                  agent: msg.agent,
+                  timestamp: new Date().toISOString(),
+                })),
+              ]);
             }
-            // Update UI with streaming content (use baseMessages to avoid stale state!)
-            setMessages([
-              ...baseMessages,
-              ...completedMessages,
-              ...Array.from(streamingMessages.values()).map(msg => ({
-                role: 'assistant' as const,
-                content: msg.content,
-                thinking: msg.thinking || undefined,
-                model: msg.modelName,
-                agent: msg.agent,
-                timestamp: new Date().toISOString(),
-              })),
-            ]);
+          } else if (event.type === 'complete' && event.message) {
+            streamingMessages.delete(event.modelId);
+            completedMessages.push(event.message);
           }
-        } else if (event.type === 'complete' && event.message) {
-          // Model finished
-          streamingMessages.delete(event.modelId);
-          completedMessages.push(event.message);
         }
+
+        // If no tool calls, we're done!
+        if (!hasToolCalls || toolCalls.length === 0) {
+          break;
+        }
+
+        // Execute ALL tool calls and collect results
+        const toolResults: string[] = [];
+        for (const toolCall of toolCalls) {
+          const toolName = toolCall.function?.name;
+          const toolArgs = JSON.parse(toolCall.function?.arguments || '{}');
+
+          try {
+            const result = await mcpServer.executeTool(toolName, toolArgs);
+
+            if (result.success) {
+              toolResults.push(result.data);
+              // Show tool execution in UI
+              completedMessages.push({
+                role: 'system' as const,
+                content: `🔧 ${toolName}(...)\n${result.data}`,
+                model: 'tool',
+                timestamp: new Date().toISOString(),
+              });
+            } else {
+              toolResults.push(`Error: ${result.error?.message}`);
+              completedMessages.push({
+                role: 'system' as const,
+                content: `❌ ${toolName} failed: ${result.error?.message}`,
+                model: 'tool',
+                timestamp: new Date().toISOString(),
+              });
+            }
+          } catch (error: any) {
+            toolResults.push(`Error: ${error.message}`);
+            completedMessages.push({
+              role: 'system' as const,
+              content: `❌ ${toolName} error: ${error.message}`,
+              model: 'tool',
+              timestamp: new Date().toISOString(),
+            });
+          }
+        }
+
+        // 🔥 FEED TOOL RESULTS BACK AS USER MESSAGE
+        const toolResultMessage: Message = {
+          role: 'user',
+          content: `Tool results:\n${toolResults.join('\n\n')}`,
+        };
+
+        conversationHistory = [...conversationHistory, ...completedMessages, toolResultMessage];
+
+        // Update UI with tool results
+        setMessages([...conversationHistory]);
+
+        // Continue the loop - Claude will see the tool results and respond
       }
 
       // Final update with all completed messages
-      setMessages([...baseMessages, ...completedMessages]);
+      setMessages([...conversationHistory, ...completedMessages]);
 
       // Save to file system
       fileSystem.addMessage({
@@ -644,7 +718,7 @@ When the user asks you to work with files or code, you can help them directly.`;
         fileSystem.addMessage({
           role: 'assistant',
           content: response.content,
-          thinking: response.thinking, //cc gpts use reasoning instead of thinking, is this supporting this?
+          thinking: response.thinking,
           timestamp: response.timestamp,
           model: response.model,
         });
@@ -684,7 +758,7 @@ When the user asks you to work with files or code, you can help them directly.`;
       </Box>
 
       <Box marginBottom={1} justifyContent="center">
-        <Text color="cyan" bold>🚀 Unrestricted Creativity  🚀</Text>
+        <Text color="orange" bold>🚀 Unrestricted Creativity  🚀</Text>
       </Box>
       <Box marginBottom={2} justifyContent="center">
         <Text color="orange" dimColor>
@@ -707,13 +781,13 @@ When the user asks you to work with files or code, you can help them directly.`;
           {conversationMode !== 'single' && (
             <Box marginRight={2}>
               <Text color="gray">Mode: </Text>
-              <Text color="cyan" bold>{conversationMode}</Text>
+              <Text color="green" bold>{conversationMode}</Text>
             </Box>
           )}
           {activeAgents.length > 0 && (
             <Box>
-              <Text color="gray">Agents: </Text>
-              <Text color="yellow" bold>
+              <Text color="orange">Agents: </Text>
+              <Text color="orange" bold>
                 {activeAgents.map(id => AGENT_ROLES[id].emoji).join(' ')}
               </Text>
             </Box>
@@ -722,7 +796,7 @@ When the user asks you to work with files or code, you can help them directly.`;
       )}
 
       <Box marginTop={1} marginBottom={1}>
-        <Text color="gray" dimColor>
+        <Text color="orange" dimColor>
           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         </Text>
       </Box>
@@ -815,7 +889,7 @@ When the user asks you to work with files or code, you can help them directly.`;
         />
       )}
 
-      {/* 🔥 Agent Selector Dialog */}
+      {/*  Agent Selector Dialog */}
       {activeDialog === 'agent-selector' && (
         <AgentSelector
           activeAgents={activeAgents}
@@ -836,14 +910,14 @@ When the user asks you to work with files or code, you can help them directly.`;
       {/* Permissions Input Dialog */}
       {activeDialog === 'permissions-input' && (
         <Box flexDirection="column" padding={1} borderStyle="round" borderColor="yellow">
-          <Text color="yellow" bold>
-            {permissionsInputType === 'approved' ? '✅ Add Approved Command' : '❌ Add Denied Command'}
+          <Text color="cyan" bold>
+            {permissionsInputType === 'approved' ? ' Add Approved Command' : ' Add Denied Command'}
           </Text>
           <Box marginTop={1}>
-            <Text color="white">Command pattern: </Text>
+            <Text color="green">Command pattern: </Text>
           </Box>
           <Box marginTop={1}>
-            <Text color="cyan">&gt; </Text>
+            <Text color="green">&gt; </Text>
             <TextInput
               value={permissionsInputValue}
               onChange={setPermissionsInputValue}
@@ -882,7 +956,7 @@ When the user asks you to work with files or code, you can help them directly.`;
             </Text>
           </Box>
           <Box marginTop={1}>
-            <Text color="gray" dimColor>
+            <Text color="orange" dimColor>
               Press Enter to save | Esc to cancel
             </Text>
           </Box>
@@ -899,8 +973,8 @@ When the user asks you to work with files or code, you can help them directly.`;
       {/* Processing indicator */}
       {isProcessing && (
         <Box marginBottom={1}>
-          <Text color="yellow">
-            🤖 {selectedModels.map(id => AVAILABLE_MODELS[id]?.name || id).join(', ')} streaming...
+          <Text color="orange">
+            🤖 {selectedModels.map(id => AVAILABLE_MODELS[id]?.name || id).join(', ')} is diddle doodling....
           </Text>
         </Box>
       )}
@@ -908,7 +982,7 @@ When the user asks you to work with files or code, you can help them directly.`;
       {/* Input */}
       {(!activeDialog || activeDialog === 'commands') && !isProcessing && (
         <Box marginTop={1}>
-          <Text color="cyan" bold>{'> '}</Text>
+          <Text color="orange" bold>{'> '}</Text>
           <TextInput
             value={inputValue}
             onChange={handleInputChange}
@@ -921,7 +995,7 @@ When the user asks you to work with files or code, you can help them directly.`;
       {/* Help text */}
       {!activeDialog && !isProcessing && (
         <Box marginTop={1}>
-          <Text color="gray" dimColor>
+          <Text color="orange" dimColor>
             / = commands | ↑↓ = navigate | Tab = thinking | Esc = cancel | /help = all commands & quick switches
           </Text>
         </Box>

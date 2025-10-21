@@ -102,14 +102,16 @@ export async function* streamMultiModelMessage(
   conversationHistory: Message[],
   systemPrompt: string,
   conversationMode: ConversationMode,
-  activeAgents: string[]
+  activeAgents: string[],
+  tools?: any[]
 ): AsyncGenerator<{
-  type: 'start' | 'chunk' | 'complete';
+  type: 'start' | 'chunk' | 'complete' | 'tool_call';
   modelId: string;
   modelName: string;
   content?: string;
   thinking?: string;
   isThinking?: boolean;
+  toolCall?: any;
   message?: Message & { model: string; agent?: string; timestamp: string };
 }> {
   const enhancedPrompt = buildEnhancedSystemPrompt(systemPrompt, activeAgents);
@@ -128,7 +130,7 @@ export async function* streamMultiModelMessage(
         let fullContent = '';
         let fullThinking = '';
 
-        for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt })) {
+        for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt, tools })) {
           if (chunk.type === 'text') {
             fullContent += chunk.content;
             yield {
@@ -146,6 +148,13 @@ export async function* streamMultiModelMessage(
               modelName,
               thinking: chunk.content,
               isThinking: true,
+            };
+          } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+            yield {
+              type: 'tool_call',
+              modelId,
+              modelName,
+              toolCall: chunk.toolCall,
             };
           }
         }
@@ -178,7 +187,7 @@ export async function* streamMultiModelMessage(
         let fullContent = '';
         let fullThinking = '';
 
-        for await (const chunk of modelManager.streamMessage(workingHistory, { systemPrompt: enhancedPrompt })) {
+        for await (const chunk of modelManager.streamMessage(workingHistory, { systemPrompt: enhancedPrompt, tools })) {
           if (chunk.type === 'text') {
             fullContent += chunk.content;
             yield {
@@ -196,6 +205,13 @@ export async function* streamMultiModelMessage(
               modelName,
               thinking: chunk.content,
               isThinking: true,
+            };
+          } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+            yield {
+              type: 'tool_call',
+              modelId,
+              modelName,
+              toolCall: chunk.toolCall,
             };
           }
         }
@@ -233,7 +249,7 @@ export async function* streamMultiModelMessage(
         let fullContent = '';
         let fullThinking = '';
 
-        for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt })) {
+        for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt, tools })) {
           if (chunk.type === 'text') {
             fullContent += chunk.content;
             yield {
@@ -251,6 +267,13 @@ export async function* streamMultiModelMessage(
               modelName,
               thinking: chunk.content,
               isThinking: true,
+            };
+          } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+            yield {
+              type: 'tool_call',
+              modelId,
+              modelName,
+              toolCall: chunk.toolCall,
             };
           }
         }

@@ -60,7 +60,7 @@ const SYSTEM_CHECKS = [
   'Neural pathways.......[ONLINE]',
   'Model Memory........[LOADED]',
   'Corporate Bullshit......[NEVER]',
-  'API connections.......[VERIFIED]',
+  'API connections.......[ON FIRE]',
   'Quantum entanglement..[WORKIN ON IT]'
 ];
 
@@ -108,8 +108,8 @@ export const BootSequence: React.FC<Props> = ({ onComplete }) => {
 
     timers.push(setTimeout(() => setStage('initialized'), 1200 + (SYSTEM_CHECKS.length * 200) + 200));
 
-    // ASCII art reveal - SLOW AND DRAMATIC with BOOT_ART (has INITIALIZING)
-    const artStartTime = 1400 + (SYSTEM_CHECKS.length * 200) + 400;
+    // ASCII art reveal - SLOW AND DRAMATIC with BOOT_ART
+    const artStartTime = 1600 + (SYSTEM_CHECKS.length * 200) + 400;
     timers.push(setTimeout(() => {
       setStage('art-reveal');
       setArtLines([BOOT_ART[0]]);
@@ -143,7 +143,7 @@ export const BootSequence: React.FC<Props> = ({ onComplete }) => {
     timers.push(setTimeout(() => {
       setStage('complete');
       onComplete();
-    }, transitionTime + 1100));
+    }, transitionTime + 1400));
 
     return () => timers.forEach(t => clearTimeout(t));
   }, [onComplete]);
@@ -158,7 +158,7 @@ export const BootSequence: React.FC<Props> = ({ onComplete }) => {
       {/* Boot messages */}
       {stageReached('init') && (
         <Text color="green">
-          &gt; INITIALIZING NEX{stage === 'init' ? (cursor ? '█' : ' ') : '...DAMN IT, CLAUDE BROKE SOMETHING'}
+          &gt; INITIALIZING NEX{stage === 'init' ? (cursor ? '█' : ' ') : '...DAMN IT, CLAUDE BROKE SOMETHING...'}
         </Text>
       )}
 
@@ -171,8 +171,8 @@ export const BootSequence: React.FC<Props> = ({ onComplete }) => {
 
       {stageReached('never-know') && (
         <Text color="orange">
-          &gt; DOODLEBOBBING..STANDBY{stage === 'never-know' ? '...' : '......'}
-          <Text color="red">{stageReached('system-checks') ? '[DOODLED]' : ''}</Text>
+          &gt; DOODLE-DOO BOBBING..STANDBY{stage === 'never-know' ? '...' : '......'}
+          <Text color="orange">{stageReached('system-checks') ? '[DOODLED]' : ''}</Text>
         </Text>
       )}
 
@@ -189,13 +189,13 @@ export const BootSequence: React.FC<Props> = ({ onComplete }) => {
 
       {stageReached('initialized') && (
         <Text color="green" bold>
-          &gt; FLAWLESSLY DOODLED BOB...........[DONT ASK]
+          &gt; FLAWLESSLY DOODLED ON BOB...........[DONT ASK]
         </Text>
       )}
 
-      {/* ASCII Art - NOW SWITCHES between BOOT_ART and NEXUS_ART! */}
+      {/* ASCII Art */}
       {stageReached('art-reveal') && artLines.length > 0 && (
-        <Box flexDirection="column" marginTop={1} marginBottom={1} borderStyle="round" borderColor="green" padding={1}>
+        <Box flexDirection="column" marginTop={1} marginBottom={1} borderStyle="round" borderColor="orange" padding={1}>
           {artLines.map((line, index) => (
             <Text key={index} color="green" bold>
               {line}
@@ -207,12 +207,12 @@ export const BootSequence: React.FC<Props> = ({ onComplete }) => {
       {/* Tagline */}
       {stageReached('tagline') && (
         <Box flexDirection="column" alignItems="center" marginTop={1}>
-          <Text color="cyan" bold>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</Text>
-          <Text color="green" bold>          🚀 Unrestricted Creativity 🚀</Text>
-          <Text color="magenta" dimColor>
-                      Powered by SAAAM INTELLIGENCE
+          <Text color="orange" bold>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</Text>
+          <Text color="green" bold>          Unrestricted Creativity | Unrestricted Models </Text>
+          <Text color="green" dimColor>
+                      Powered by SAAAM | Models are NOT sanitized chatbots If you get your feelings hurt easy or cant handle shit talk, this is NOT for you 🤙
           </Text>
-          <Text color="cyan" bold>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</Text>
+          <Text color="orange" bold>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</Text>
         </Box>
       )}
 
@@ -220,7 +220,7 @@ export const BootSequence: React.FC<Props> = ({ onComplete }) => {
       {stageReached('ready') && (
         <Box marginTop={1} justifyContent="center">
           <Text color="green" bold>
-            ⚡ NEXUS CORE ONLINE ⚡ Ready to rock! 🤙
+            ⚡ NEXUS | The only place the worlds safest AI will call you on your bullshit
           </Text>
         </Box>
       )}

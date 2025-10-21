@@ -484,6 +484,7 @@ export class UnifiedModelManager {
       temperature?: number;
       maxTokens?: number;
       systemPrompt?: string;
+      tools?: any[]; // MCP tool definitions
     } = {}
   ): AsyncGenerator<StreamChunk> {
     const config = this.getModelConfig();
@@ -508,6 +509,7 @@ export class UnifiedModelManager {
       temperature?: number;
       maxTokens?: number;
       systemPrompt?: string;
+      tools?: any[];
     }
   ): AsyncGenerator<StreamChunk> {
     const formattedMessages = messages
@@ -528,6 +530,8 @@ export class UnifiedModelManager {
       temperature: 1.0,
       system: systemPrompt,
       messages: formattedMessages,
+      // Add tool support
+      ...(options.tools && options.tools.length > 0 && { tools: options.tools as any }),
       // TODO: Re-enable when SDK supports these experimental features
       // betas: ["context-1m-2025-08-07"],
       // ...(useThinking && {
@@ -539,7 +543,22 @@ export class UnifiedModelManager {
     });
 
     for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta') {
+      if (chunk.type === 'content_block_start') {
+        // Handle tool_use blocks
+        if (chunk.content_block.type === 'tool_use') {
+          yield {
+            type: 'tool_call',
+            toolCall: {
+              id: chunk.content_block.id,
+              type: 'function',
+              function: {
+                name: chunk.content_block.name,
+                arguments: JSON.stringify(chunk.content_block.input),
+              },
+            },
+          };
+        }
+      } else if (chunk.type === 'content_block_delta') {
         if (chunk.delta.type === 'text_delta') {
           yield {
             type: 'text',

@@ -11,6 +11,8 @@ import { NexusFileSystem } from '../core/filesystem/nexus-fs.js';
 import { FileTools } from '../core/tools/file-tools.js';
 import { UnifiedModelManager } from '../core/models/unified-model-manager.js';
 import { NexusTUI } from './components/NexusTUI.js';
+import { MCPServer } from '../core/mcp/client.js';
+import { registerFileTools, getFileToolsDefinitions } from '../core/mcp/file-tools-mcp.js';
 
 // Load environment variables
 dotenvConfig();
@@ -44,12 +46,21 @@ async function main() {
   // Set default model (Sonnet 4.5)
   modelManager.setModel('claude-sonnet-4-5-20250929');
 
+  // Initialize MCP Server and register file tools
+  const mcpServer = new MCPServer();
+  registerFileTools(mcpServer, fileTools);
+
+  // Get tool definitions for passing to AI models
+  const toolDefinitions = getFileToolsDefinitions();
+
   // Render the TUI
   render(
     React.createElement(NexusTUI, {
       modelManager,
       fileSystem,
       fileTools,
+      mcpServer,
+      toolDefinitions,
     })
   );
 }

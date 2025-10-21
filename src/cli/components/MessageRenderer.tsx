@@ -19,12 +19,12 @@ export const MessageRenderer: React.FC<Props> = ({ messages, currentModel }) => 
           return (
             <Box key={index} flexDirection="column" marginBottom={1}>
               <Box>
-                <Text color="cyan" bold>
-                  You:
+                <Text color="orange" bold>
+                  ●
                 </Text>
               </Box>
               <Box marginLeft={2}>
-                <Text color="white">{msg.content}</Text>
+                <Text color="green">{msg.content}</Text>
               </Box>
             </Box>
           );
@@ -37,10 +37,10 @@ export const MessageRenderer: React.FC<Props> = ({ messages, currentModel }) => 
             <Box key={index} flexDirection="column" marginBottom={1}>
               <Box>
                 <Text color="green" bold>
-                  🤖 {modelName}:
+                   {modelName}:
                 </Text>
                 {msg.timestamp && (
-                  <Text color="gray" dimColor>
+                  <Text color="green" dimColor>
                     {' '}
                     ({new Date(msg.timestamp).toLocaleTimeString()})
                   </Text>
@@ -49,7 +49,7 @@ export const MessageRenderer: React.FC<Props> = ({ messages, currentModel }) => 
 
               {msg.thinking && (
                 <Box marginLeft={2} marginBottom={1}>
-                  <Text color="gray" dimColor>
+                  <Text color="cyan" dimColor>
                     💭 Thinking: {msg.thinking.substring(0, 200)}
                     {msg.thinking.length > 200 ? '...' : ''}
                   </Text>
@@ -57,12 +57,12 @@ export const MessageRenderer: React.FC<Props> = ({ messages, currentModel }) => 
               )}
 
               <Box marginLeft={2}>
-                <Text color="white">{msg.content}</Text>
+                <Text color="green">{msg.content}</Text>
               </Box>
 
               {msg.toolCalls && msg.toolCalls.length > 0 && (
                 <Box marginLeft={2} marginTop={1}>
-                  <Text color="yellow">🔧 Tool Calls: {msg.toolCalls.length}</Text>
+                  <Text color="blue">🔧 Tool Calls: {msg.toolCalls.length}</Text>
                 </Box>
               )}
             </Box>
