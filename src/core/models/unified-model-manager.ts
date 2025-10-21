@@ -360,6 +360,7 @@ export class UnifiedModelManager {
       temperature: 1.0,
       system: systemPrompt,
       messages: formattedMessages,
+      betas: ["context-1m-2025-08-07"],
       // Enable extended thinking if supported and enabled
       ...(useThinking && {
         thinking: {
@@ -526,6 +527,7 @@ export class UnifiedModelManager {
       temperature: 1.0,
       system: systemPrompt,
       messages: formattedMessages,
+      betas: ["context-1m-2025-08-07"],
       ...(useThinking && {
         thinking: {
           type: 'enabled',
