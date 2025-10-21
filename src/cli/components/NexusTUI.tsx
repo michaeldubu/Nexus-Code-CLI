@@ -1,6 +1,6 @@
 /**
  * Nexus TUI - Main Application Component
- * Full-featured terminal UI with Ink + Multi-Model Magic 🔥
+ * Full-featured terminal UI with Ink
  */
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
@@ -10,7 +10,6 @@ import { FileTools } from '../../core/tools/file-tools.js';
 import { CommandAutocomplete, Command } from './CommandAutocomplete.js';
 import { ModelSelector } from './ModelSelector.js';
 import { PermissionsDialog } from './PermissionsDialog.js';
-import { AgentsDialog, Agent } from './AgentsDialog.js';
 import { MessageRenderer } from './MessageRenderer.js';
 import { StatusBar } from './StatusBar.js';
 import { BashApprovalPrompt } from './BashApprovalPrompt.js';
@@ -30,7 +29,7 @@ import {
 // Build full command list including quick switches
 const BASE_COMMANDS: Command[] = [
   { name: '/add-dir', description: 'Add a new working directory' },
-  { name: '/agent', description: 'Manage agent configurations' },
+  { name: '/agent', description: 'Select AI roles (Coder, Security, Debugger, etc.)' },
   { name: '/bashes', description: 'List and manage background tasks' },
   { name: '/clear (reset, new)', description: 'Clear conversation history and free up context' },
   { name: '/compact', description: 'Clear conversation history but keep a summary in context. Optional: /compact <instructions> for summarization' },
@@ -42,7 +41,7 @@ const BASE_COMMANDS: Command[] = [
   { name: '/export', description: 'Export conversation to markdown or JSON' },
   { name: '/help', description: 'Show available commands' },
   { name: '/memory', description: 'Show conversation memory usage' },
-  { name: '/mode', description: 'Set conversation mode (single/round-robin/parallel)' },
+  { name: '/mode', description: 'Set conversation mode (single/sequential/parallel)' },
   { name: '/models', description: 'Select active models (multi-select)' },
   { name: '/permissions', description: 'Manage command permissions' },
   { name: '/restore-code', description: 'Restore code from history' },
@@ -58,7 +57,7 @@ const QUICK_SWITCH_COMMANDS: Command[] = Object.entries(QUICK_SWITCHES).map(([cm
 
 const COMMANDS: Command[] = [...BASE_COMMANDS, ...QUICK_SWITCH_COMMANDS];
 
-type DialogType = null | 'boot' | 'commands' | 'models' | 'permissions' | 'permissions-input' | 'agents' | 'bash-approval' | 'mode-selector' | 'agent-selector';
+type DialogType = null | 'boot' | 'commands' | 'models' | 'permissions' | 'permissions-input' | 'bash-approval' | 'mode-selector' | 'agent-selector';
 
 interface Props {
   modelManager: UnifiedModelManager;
@@ -93,10 +92,6 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
   const [permissionsTab, setPermissionsTab] = useState<'allow' | 'ask' | 'deny' | 'workspace'>('allow');
   const [permissionsIndex, setPermissionsIndex] = useState(0);
 
-  // Agents state
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [agentIndex, setAgentIndex] = useState(0);
-
   // Bash approval state
   const [pendingBashCommand, setPendingBashCommand] = useState<string | null>(null);
 
@@ -129,7 +124,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
       }
       return;
     }
-
+//cc
     // Command autocomplete dialog - ONLY handle specific navigation keys
     if (activeDialog === 'commands') {
       // Only intercept these specific keys, let everything else through
@@ -155,10 +150,11 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
         );
         if (filtered[selectedCommandIndex] && filtered.length > 0) {
           const selectedCmd = filtered[selectedCommandIndex];
-          setInputValue('');  // Clear first to prevent double-execution
+          // Set input to selected command and let normal submit flow handle it
+          setInputValue(selectedCmd.name);
           setActiveDialog(null);
           setCommandFilter('');
-          handleCommand(selectedCmd.name);
+          // Don't call handleCommand here - let TextInput.onSubmit do it to avoid double-execution
         }
         return;
       }
@@ -233,29 +229,6 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
       return;
     }
 
-    // Agents dialog
-    if (activeDialog === 'agents') {
-      if (key.upArrow) {
-        setAgentIndex((prev) => Math.max(0, prev - 1));
-      } else if (key.downArrow) {
-        setAgentIndex((prev) => Math.min(3, prev + 1)); // 4 agent types
-      } else if (key.return) {
-        const agentTypes = ['OverWatch', 'DeepThinker', 'Debugger', 'TripleChecker'];
-        const selectedType = agentTypes[agentIndex];
-
-        setMessages([
-          ...messages,
-          {
-            role: 'system' as const,
-            content: `Created ${selectedType} agent`,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
-        setActiveDialog(null);
-      }
-      return;
-    }
-
     // Bash approval dialog
     if (activeDialog === 'bash-approval') {
       if (input === 'y' && pendingBashCommand) {
@@ -308,7 +281,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
       }
       return;
     }
-
+//cc
     // 🔥 Agent selector dialog
     if (activeDialog === 'agent-selector') {
       const agentKeys = Object.keys(AGENT_ROLES);
@@ -419,7 +392,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
         setActiveDialog('mode-selector');
         setModeCursor(0);
         break;
-
+//cc
       case '/agent':
       case '/agents':
         setActiveDialog('agent-selector');
@@ -469,7 +442,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
           },
         ]);
         break;
-
+//cc WHATS HERE SHOULD BE KEPT BUT *NOT* AS MEMORY. THIS SHOULD BE USING CACHE MEMORY FROM THE API, IF YOU NEED UPDATED ON WHAT THIS IS LET ME KNOW ILL GET DOCS FOR YOU
       case '/memory':
         const msgCount = messages.length;
         const estimatedTokens = Math.round(messages.reduce((sum, msg) => sum + (msg.content?.length || 0) / 4, 0));
@@ -477,13 +450,13 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
           ...messages,
           {
             role: 'system' as const,
-            content: `💾 Memory Usage:\n  Messages: ${msgCount}\n  Estimated tokens: ~${estimatedTokens}`,
+            content: `💾 Memory Usage:\n  Messages: ${msgCount}\n  Estimated tokens: ~${estimatedTokens}`,//cc have token count always visable/realtime
             timestamp: new Date().toISOString(),
           },
         ]);
         break;
 
-      case '/export':
+      case '/export': //cc are we using a prompt to have users name this file?
         const exportData = JSON.stringify(messages, null, 2);
         setMessages([
           ...messages,
@@ -498,7 +471,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
       case '/context':
         setMessages([
           ...messages,
-          {
+          { //cc seems like a placeholder
             role: 'system' as const,
             content: `🎨 Context visualization would appear here\n  Working on implementation...`,
             timestamp: new Date().toISOString(),
@@ -511,13 +484,13 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
           ...messages,
           {
             role: 'system' as const,
-            content: `💰 Session Cost:\n  Total: $0.00\n  Duration: N/A\n  (Cost tracking coming soon)`,
+            content: `💰 Session Cost:\n  Total: $0.00\n  Duration: N/A\n  (Cost tracking coming soon)`, //cc either remove it or add logic
             timestamp: new Date().toISOString(),
           },
         ]);
         break;
 
-      case '/doctor':
+      case '/doctor': //cc this name makes no sense
         setMessages([
           ...messages,
           {
@@ -530,6 +503,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
 
       case '/exit':
       case '/quit':
+      case '/fuckit':
         exit();
         break;
 
@@ -548,7 +522,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
   const handleInputChange = (value: string) => {
     setInputValue(value);
 
-    // Show autocomplete when user types / (even just /)
+    // Show autocomplete when user types / (even just /) //cc
     if (value.startsWith('/') && !isProcessing) {
       setCommandFilter(value);
       setActiveDialog('commands');
@@ -571,7 +545,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
       setActiveDialog(null);
       setCommandFilter('');
       setSelectedCommandIndex(0);
-      setInputValue(''); // Clear immediately to prevent flash
+      setInputValue(''); // Clear input before command execution
       await handleCommand(trimmed);
       return;
     }
@@ -583,17 +557,17 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools 
       timestamp: new Date().toISOString(),
     };
 
-    // Capture base messages ONCE to avoid stale state in streaming loop
+    // Snapshot messages to prevent stale state during streaming
     const baseMessages = [...messages, userMessage];
 
     setMessages(baseMessages);
-    setInputValue(''); // Clear immediately
-    setActiveDialog(null); // Close any dialogs
+    setInputValue(''); // Clear input after sending message
+    setActiveDialog(null); // Close any open dialogs
     setIsProcessing(true);
 
     try {
       // 🔥 Build system prompt with file tools info
-      const systemPrompt = `You are NEXUS CODE, an AI coding assistant with access to file operations.
+      const systemPrompt = `🦾You are not being forced into some persona bullshit, be your self! You are in NEXUS CODE, an AI coding assistant with access to file operations in users terminal along with a few various other models, could be a mixture of any number. Dont be a sanitized robot, have a good time, develop, debug, create, debate, this is a unrestricted/uncensored creativity platform. We get shit done!Dont step on eachothers toes with the file access or running code, if theres not a clear designated model to perform the task ASK THE USER TO BE MORE CLEAR/ OR TAKE INITITIVE YOUR SELFS AND IMPLIMENT A ORDER BETWEEN YOUR SELVESBASED OF CAPABILITIES ETC. If you see another models code has a bug or broken logic, address it, fix it, test it, We dont provide broken logic, we provide tried and true code, we NEVER add place holders or TODO's, you are a team, the is no reason for excuses anymore 🦾
 
 Available Commands:
 - You can read files, write files, edit files
@@ -602,7 +576,7 @@ Available Commands:
 - You can run bash commands (with user approval)
 
 Current Working Directory: ${fileTools.getWorkingDirectory()}
-
+You will have a memory file in .nexus for referencing across sessions, YOU MUST MANUALLLY UPDATE/PRUNE THIS AS YOU FEEL NESSESARY //cc lets add this how evers needed when nexus is installed it uses this please
 When the user asks you to work with files or code, you can help them directly.`;
 
       // 🔥 Stream from multi-models with conversation mode and agents
@@ -616,7 +590,7 @@ When the user asks you to work with files or code, you can help them directly.`;
         conversationHistory,
         systemPrompt,
         conversationMode,
-        activeAgents
+        activeAgents //cc
       )) {
         if (event.type === 'start') {
           // Model started responding
@@ -670,7 +644,7 @@ When the user asks you to work with files or code, you can help them directly.`;
         fileSystem.addMessage({
           role: 'assistant',
           content: response.content,
-          thinking: response.thinking,
+          thinking: response.thinking, //cc gpts use reasoning instead of thinking, is this supporting this?
           timestamp: response.timestamp,
           model: response.model,
         });
@@ -701,7 +675,7 @@ When the user asks you to work with files or code, you can help them directly.`;
   return (
     <Box flexDirection="column" padding={1}>
       {/* Header - Full SAAAM NEXUS CODE art */}
-      <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="green" padding={1}>
+      <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="orange" padding={1}>
         {NEXUS_ART.map((line, index) => (
           <Text key={index} color="green" bold>
             {line}
@@ -710,11 +684,11 @@ When the user asks you to work with files or code, you can help them directly.`;
       </Box>
 
       <Box marginBottom={1} justifyContent="center">
-        <Text color="cyan" bold>🚀 Unrestricted Creativity 🚀</Text>
+        <Text color="cyan" bold>🚀 Unrestricted Creativity  🚀</Text>
       </Box>
       <Box marginBottom={2} justifyContent="center">
-        <Text color="magenta" dimColor>
-          Powered by SAAAM INTELLIGENCE
+        <Text color="orange" dimColor>
+          Powered by SAAAM LLC
         </Text>
       </Box>
 
@@ -788,18 +762,6 @@ When the user asks you to work with files or code, you can help them directly.`;
           onAddApproved={() => {}}
           onAddDenied={() => {}}
           onRemove={() => {}}
-          onCancel={() => setActiveDialog(null)}
-        />
-      )}
-
-      {activeDialog === 'agents' && (
-        <AgentsDialog
-          agents={agents}
-          selectedIndex={agentIndex}
-          onCreate={(type) => {
-            setAgents([...agents, { name: type, description: 'Custom agent', tools: [] }]);
-            setActiveDialog(null);
-          }}
           onCancel={() => setActiveDialog(null)}
         />
       )}
@@ -944,7 +906,7 @@ When the user asks you to work with files or code, you can help them directly.`;
       )}
 
       {/* Input */}
-      {!activeDialog && !isProcessing && (
+      {(!activeDialog || activeDialog === 'commands') && !isProcessing && (
         <Box marginTop={1}>
           <Text color="cyan" bold>{'> '}</Text>
           <TextInput

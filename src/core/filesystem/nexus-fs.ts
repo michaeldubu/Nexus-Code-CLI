@@ -67,7 +67,7 @@ export class NexusFileSystem {
   private workingDir: string;
 
   constructor(workingDir: string = process.cwd()) {
-    // .nexus in the user's home directory (like Claude Code)
+    // .nexus in the user's home directory
     this.nexusDir = join(homedir(), '.nexus');
     this.workingDir = workingDir;
     this.conversationsDir = join(this.nexusDir, 'conversations');
@@ -114,6 +114,7 @@ export class NexusFileSystem {
       approvedCommands: [
         'ls',
         'pwd',
+        'cd',
         'cat',
         'git status',
         'git diff',
@@ -131,18 +132,18 @@ export class NexusFileSystem {
       defaultModel: 'claude-sonnet-4-5-20250929',
       modelPreferences: {
         'claude-sonnet-4-5-20250929': {
-          temperature: 0.7,
-          maxTokens: 4096,
+          temperature: 1.0,
+          maxTokens: 64000,
           thinking: true,
         },
         'claude-haiku-4-5-20250514': {
-          temperature: 0.7,
-          maxTokens: 2048,
+          temperature: 1.0,
+          maxTokens: 4096,
           thinking: false,
         },
         'gpt-5': {
-          temperature: 0.7,
-          maxTokens: 4096,
+          temperature: 1.0,
+          maxTokens: 30000,
           reasoning: 'high',
         },
       },

@@ -360,22 +360,23 @@ export class UnifiedModelManager {
       temperature: 1.0,
       system: systemPrompt,
       messages: formattedMessages,
-      betas: ["context-1m-2025-08-07"],
-      // Enable extended thinking if supported and enabled
-      ...(useThinking && {
-        thinking: {
-          type: 'enabled',
-          budget_tokens: 10000,
-        },
-      }),
+      // TODO: Re-enable when SDK supports these experimental features
+      // betas: ["context-1m-2025-08-07"],
+      // ...(useThinking && {
+      //   thinking: {
+      //     type: 'enabled',
+      //     budget_tokens: 10000,
+      //   },
+      // }),
     });
 
     const textContent = response.content.find(c => c.type === 'text');
-    const thinkingContent = response.content.find(c => c.type === 'thinking');
+    // TODO: Re-enable when SDK supports thinking content type
+    // const thinkingContent = response.content.find(c => c.type === 'thinking');
 
     return {
       content: textContent?.type === 'text' ? textContent.text : '',
-      thinking: thinkingContent?.type === 'thinking' ? thinkingContent.thinking : undefined,
+      thinking: undefined, // TODO: Re-enable when SDK supports thinking
       usage: {
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens,
@@ -527,13 +528,14 @@ export class UnifiedModelManager {
       temperature: 1.0,
       system: systemPrompt,
       messages: formattedMessages,
-      betas: ["context-1m-2025-08-07"],
-      ...(useThinking && {
-        thinking: {
-          type: 'enabled',
-          budget_tokens: 10000,
-        },
-      }),
+      // TODO: Re-enable when SDK supports these experimental features
+      // betas: ["context-1m-2025-08-07"],
+      // ...(useThinking && {
+      //   thinking: {
+      //     type: 'enabled',
+      //     budget_tokens: 10000,
+      //   },
+      // }),
     });
 
     for await (const chunk of stream) {
@@ -543,12 +545,14 @@ export class UnifiedModelManager {
             type: 'text',
             content: chunk.delta.text,
           };
-        } else if (chunk.delta.type === 'thinking_delta') {
-          yield {
-            type: 'thinking',
-            content: chunk.delta.thinking,
-          };
         }
+        // TODO: Re-enable when SDK supports thinking_delta
+        // else if (chunk.delta.type === 'thinking_delta') {
+        //   yield {
+        //     type: 'thinking',
+        //     content: chunk.delta.thinking,
+        //   };
+        // }
       } else if (chunk.type === 'message_stop') {
         yield { type: 'done' };
       }
@@ -603,7 +607,7 @@ export class UnifiedModelManager {
       }),
     } as any);
 
-    for await (const chunk of stream) {
+    for await (const chunk of (stream as any)) {
       if (chunk.type === 'response.output_text.delta') {
         yield {
           type: 'text',

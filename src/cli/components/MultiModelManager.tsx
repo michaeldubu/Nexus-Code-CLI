@@ -138,7 +138,7 @@ export async function* streamMultiModelMessage(
               content: chunk.content,
               isThinking: false,
             };
-          } else if (chunk.type === 'thinking') {
+          } else if (chunk.type === 'thinking' || chunk.type === 'reasoning') {
             fullThinking += chunk.content;
             yield {
               type: 'chunk',
@@ -188,7 +188,7 @@ export async function* streamMultiModelMessage(
               content: chunk.content,
               isThinking: false,
             };
-          } else if (chunk.type === 'thinking') {
+          } else if (chunk.type === 'thinking' || chunk.type === 'reasoning') {
             fullThinking += chunk.content;
             yield {
               type: 'chunk',
@@ -243,7 +243,7 @@ export async function* streamMultiModelMessage(
               content: chunk.content,
               isThinking: false,
             };
-          } else if (chunk.type === 'thinking') {
+          } else if (chunk.type === 'thinking' || chunk.type === 'reasoning') {
             fullThinking += chunk.content;
             yield {
               type: 'chunk',

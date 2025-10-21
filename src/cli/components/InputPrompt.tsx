@@ -48,7 +48,7 @@ export const InputPrompt: React.FC<Props> = ({
 
   return (
     <Box>
-      <Text color="cyan" bold>
+      <Text color="green" bold>
         {'> '}
       </Text>
       {!disabled ? (
@@ -59,7 +59,7 @@ export const InputPrompt: React.FC<Props> = ({
           placeholder={placeholder}
         />
       ) : (
-        <Text color="gray" dimColor>
+        <Text color="orange" dimColor>
           {placeholder}
         </Text>
       )}

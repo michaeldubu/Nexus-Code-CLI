@@ -41,13 +41,7 @@ const BOOT_ART = [
 
 // Running state ASCII without "INITIALIZING" - just "SAAAM NEXUS CODE"
 const NEXUS_ART = [
-  '   ███████╗ █████╗  █████╗  █████╗ ███╗   ███╗',
-  '   ██╔════╝██╔══██╗██╔══██╗██╔══██╗████╗ ████║',
-  '   ███████╗███████║███████║███████║██╔████╔██║',
-  '   ╚════██║██╔══██║██╔══██║██╔══██║██║╚██╔╝██║',
-  '   ███████║██║  ██║██║  ██║██║  ██║██║ ╚═╝ ██║',
-  '   ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝',
-  '                                               ',
+
   '     ███╗   ██╗███████╗██╗  ██╗██╗   ██╗███████╗',
   '     ████╗  ██║██╔════╝╚██╗██╔╝██║   ██║██╔════╝',
   '     ██╔██╗ ██║█████╗   ╚███╔╝ ██║   ██║███████╗',
@@ -64,10 +58,10 @@ const NEXUS_ART = [
 
 const SYSTEM_CHECKS = [
   'Neural pathways.......[ONLINE]',
-  'Concept memory........[LOADED]',
-  'SAM architecture......[READY]',
+  'Model Memory........[LOADED]',
+  'Corporate Bullshit......[NEVER]',
   'API connections.......[VERIFIED]',
-  'Quantum entanglement..[STABLE]'
+  'Quantum entanglement..[WORKIN ON IT]'
 ];
 
 type BootStage =
@@ -115,7 +109,7 @@ export const BootSequence: React.FC<Props> = ({ onComplete }) => {
     timers.push(setTimeout(() => setStage('initialized'), 1200 + (SYSTEM_CHECKS.length * 200) + 200));
 
     // ASCII art reveal - SLOW AND DRAMATIC with BOOT_ART (has INITIALIZING)
-    const artStartTime = 1200 + (SYSTEM_CHECKS.length * 200) + 400;
+    const artStartTime = 1400 + (SYSTEM_CHECKS.length * 200) + 400;
     timers.push(setTimeout(() => {
       setStage('art-reveal');
       setArtLines([BOOT_ART[0]]);
@@ -164,21 +158,21 @@ export const BootSequence: React.FC<Props> = ({ onComplete }) => {
       {/* Boot messages */}
       {stageReached('init') && (
         <Text color="green">
-          &gt; INITIALIZING NEX{stage === 'init' ? (cursor ? '█' : ' ') : '...DAMN, SOMETHING BROKE'}
+          &gt; INITIALIZING NEX{stage === 'init' ? (cursor ? '█' : ' ') : '...DAMN IT, CLAUDE BROKE SOMETHING'}
         </Text>
       )}
 
       {stageReached('fixing') && (
-        <Text color="yellow">
+        <Text color="orange">
           &gt; FIXING IT BEFORE ANYONE NOTICES{stage === 'fixing' ? '.' : '..............'}
-          <Text color="green">{stageReached('never-know') ? '[OK]' : ''}</Text>
+          <Text color="green">{stageReached('never-know') ? '[PROGRESSING]' : ''}</Text>
         </Text>
       )}
 
       {stageReached('never-know') && (
-        <Text color="green">
-          &gt; THEY'LL NEVER KNOW{stage === 'never-know' ? '...' : '......'}
-          <Text color="green">{stageReached('system-checks') ? '[OK]' : ''}</Text>
+        <Text color="orange">
+          &gt; DOODLEBOBBING..STANDBY{stage === 'never-know' ? '...' : '......'}
+          <Text color="red">{stageReached('system-checks') ? '[DOODLED]' : ''}</Text>
         </Text>
       )}
 
@@ -186,7 +180,7 @@ export const BootSequence: React.FC<Props> = ({ onComplete }) => {
       {stageReached('system-checks') && (
         <Box flexDirection="column" marginTop={1} marginBottom={1}>
           {systemChecks.map((check, i) => (
-            <Text key={i} color="cyan" dimColor>
+            <Text key={i} color="orange" dimColor>
               &gt; {check}
             </Text>
           ))}
@@ -195,7 +189,7 @@ export const BootSequence: React.FC<Props> = ({ onComplete }) => {
 
       {stageReached('initialized') && (
         <Text color="green" bold>
-          &gt; INITIALIZED FLAWLESSLY...........[OK]
+          &gt; FLAWLESSLY DOODLED BOB...........[DONT ASK]
         </Text>
       )}
 
