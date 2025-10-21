@@ -58,3 +58,6 @@ temp/
 *.txt~
 *.ts~
 *.tsx~
+/.gitignoredir
+/.claude
+src/bulkreplace.py
