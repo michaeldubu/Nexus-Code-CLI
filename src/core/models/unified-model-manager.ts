@@ -6,6 +6,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { toAnthropicContent, contentToText } from '../utils/content-helpers.js';
+import { mcpToAnthropicTools } from '../utils/tool-converter.js';
 
 export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'ollama';
 
@@ -148,9 +150,33 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
   },
 };
 
+// Content block types (matching Claude Code's format)
+export interface TextContentBlock {
+  type: 'text';
+  text: string;
+}
+
+export interface ImageContentBlock {
+  type: 'image';
+  source: {
+    type: 'base64';
+    media_type: string; // e.g., 'image/png', 'image/jpeg'
+    data: string; // base64-encoded image data
+  };
+}
+
+export interface FileContentBlock {
+  type: 'file';
+  name: string;
+  content: string;
+}
+
+export type ContentBlock = TextContentBlock | ImageContentBlock | FileContentBlock;
+
 export interface Message {
   role: 'user' | 'assistant' | 'system';
-  content: string;
+  // Support both string (legacy) and content blocks (new)
+  content: string | ContentBlock[];
   thinking?: string;
   toolCalls?: ToolCall[];
 }
@@ -346,10 +372,11 @@ export class UnifiedModelManager {
       .filter(m => m.role !== 'system')
       .map(m => ({
         role: m.role as 'user' | 'assistant',
-        content: m.content,
+        content: toAnthropicContent(m.content),
       }));
 
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
+    const systemPromptText = typeof systemPrompt === 'string' ? systemPrompt : contentToText(systemPrompt || '');
 
     // MAXIMUM CREATIVITY! All models use temperature 1.0 🔥
     const useThinking = this.getModelConfig().supportsThinking && this.thinkingEnabled;
@@ -358,8 +385,8 @@ export class UnifiedModelManager {
       model: this.currentModel,
       max_tokens: options.maxTokens || this.getModelConfig().maxTokens,
       temperature: 1.0,
-      system: systemPrompt,
-      messages: formattedMessages,
+      system: systemPromptText,
+      messages: formattedMessages as any,
       // TODO: Re-enable when SDK supports these experimental features
       // betas: ["context-1m-2025-08-07"],
       // ...(useThinking && {
@@ -516,10 +543,11 @@ export class UnifiedModelManager {
       .filter(m => m.role !== 'system')
       .map(m => ({
         role: m.role as 'user' | 'assistant',
-        content: m.content,
+        content: toAnthropicContent(m.content),
       }));
 
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
+    const systemPromptText = typeof systemPrompt === 'string' ? systemPrompt : contentToText(systemPrompt || '');
 
     // MAXIMUM CREATIVITY! All models use temperature 1.0 🔥
     const useThinking = this.getModelConfig().supportsThinking && this.thinkingEnabled;
@@ -528,10 +556,10 @@ export class UnifiedModelManager {
       model: this.currentModel,
       max_tokens: options.maxTokens || this.getModelConfig().maxTokens,
       temperature: 1.0,
-      system: systemPrompt,
-      messages: formattedMessages,
-      // Add tool support
-      ...(options.tools && options.tools.length > 0 && { tools: options.tools as any }),
+      system: systemPromptText,
+      messages: formattedMessages as any,
+      // Add tool support - convert MCP format to Anthropic format
+      ...(options.tools && options.tools.length > 0 && { tools: mcpToAnthropicTools(options.tools) as any }),
       // TODO: Re-enable when SDK supports these experimental features
       // betas: ["context-1m-2025-08-07"],
       // ...(useThinking && {
@@ -682,7 +710,7 @@ export class UnifiedModelManager {
         temperature: 1.0,
         maxOutputTokens: options.maxTokens || this.getModelConfig().maxTokens,
       },
-      ...(systemPrompt && { systemInstruction: systemPrompt }),
+      ...(systemPrompt && { systemInstruction: typeof systemPrompt === 'string' ? systemPrompt : contentToText(systemPrompt) }),
     });
 
     const result = await chat.sendMessage(lastMessage?.parts || [{ text: '' }]);
@@ -732,7 +760,7 @@ export class UnifiedModelManager {
         temperature: 1.0,
         maxOutputTokens: options.maxTokens || this.getModelConfig().maxTokens,
       },
-      ...(systemPrompt && { systemInstruction: systemPrompt }),
+      ...(systemPrompt && { systemInstruction: typeof systemPrompt === 'string' ? systemPrompt : contentToText(systemPrompt) }),
     });
 
     const result = await chat.sendMessageStream(lastMessage?.parts || [{ text: '' }]);

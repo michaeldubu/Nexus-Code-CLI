@@ -25,6 +25,8 @@ import {
   handleQuickSwitch as quickSwitchHelper,
   QUICK_SWITCHES,
 } from './MultiModelManager.js';
+// 🔥 Multi-Line Input with Image Support
+import { MultiLineInput, ContentBlock as InputContentBlock } from './MultiLineInput.js';
 
 // Build full command list including quick switches
 const BASE_COMMANDS: Command[] = [
@@ -94,8 +96,9 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   const [permissionsTab, setPermissionsTab] = useState<'allow' | 'ask' | 'deny' | 'workspace'>('allow');
   const [permissionsIndex, setPermissionsIndex] = useState(0);
 
-  // Bash approval state
+  // Bash approval state with Promise resolver
   const [pendingBashCommand, setPendingBashCommand] = useState<string | null>(null);
+  const [bashApprovalResolver, setBashApprovalResolver] = useState<((approved: boolean) => void) | null>(null);
 
   // Permissions input state
   const [permissionsInputValue, setPermissionsInputValue] = useState('');
@@ -537,27 +540,76 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
     }
   };
 
-  const handleInputSubmit = async (value: string) => {
-    if (!value.trim()) return;
+  const handleInputSubmit = async (value: string | InputContentBlock[]) => {
+    // Handle string input (legacy/command mode)
+    if (typeof value === 'string') {
+      if (!value.trim()) return;
 
-    const trimmed = value.trim();
+      const trimmed = value.trim();
 
-    // Handle commands - close autocomplete first
-    if (trimmed.startsWith('/')) {
-      setActiveDialog(null);
-      setCommandFilter('');
-      setSelectedCommandIndex(0);
-      setInputValue(''); // Clear input before command execution
-      await handleCommand(trimmed);
+      // Handle commands - close autocomplete first
+      if (trimmed.startsWith('/')) {
+        setActiveDialog(null);
+        setCommandFilter('');
+        setSelectedCommandIndex(0);
+        setInputValue(''); // Clear input before command execution
+        await handleCommand(trimmed);
+        return;
+      }
+
+      // Add user message (string format)
+      const userMessage: Message & { timestamp: string } = {
+        role: 'user',
+        content: trimmed,
+        timestamp: new Date().toISOString(),
+      };
+
+      processMessage(userMessage);
       return;
     }
 
-    // Add user message
+    // Handle content blocks (new multi-modal format)
+    if (value.length === 0) return;
+
+    // Convert input content blocks to Message content blocks
+    const messageContent = value.map((block): import('../../core/models/unified-model-manager.js').ContentBlock => {
+      if (block.type === 'text') {
+        return {
+          type: 'text',
+          text: block.content,
+        };
+      }
+      if (block.type === 'image') {
+        return {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: block.mimeType || 'image/png',
+            data: block.content,
+          },
+        };
+      }
+      if (block.type === 'file') {
+        return {
+          type: 'file',
+          name: block.fileName || 'unknown',
+          content: block.content,
+        };
+      }
+      throw new Error(`Unknown content block type: ${block.type}`);
+    });
+
+    // Add user message with content blocks
     const userMessage: Message & { timestamp: string } = {
       role: 'user',
-      content: trimmed,
+      content: messageContent,
       timestamp: new Date().toISOString(),
     };
+
+    processMessage(userMessage);
+  };
+
+  const processMessage = async (userMessage: Message & { timestamp: string }) => {
 
     // Snapshot messages to prevent stale state during streaming
     const baseMessages = [...messages, userMessage];
@@ -710,14 +762,14 @@ When the user asks you to work with files or code, you can help them directly.`;
       // Save to file system
       fileSystem.addMessage({
         role: 'user',
-        content: trimmed,
+        content: typeof userMessage.content === 'string' ? userMessage.content : JSON.stringify(userMessage.content),
         timestamp: new Date().toISOString(),
       });
 
       for (const response of completedMessages) {
         fileSystem.addMessage({
           role: 'assistant',
-          content: response.content,
+          content: typeof response.content === 'string' ? response.content : JSON.stringify(response.content),
           thinking: response.thinking,
           timestamp: response.timestamp,
           model: response.model,
@@ -963,8 +1015,8 @@ When the user asks you to work with files or code, you can help them directly.`;
         </Box>
       )}
 
-      {/* Messages */}
-      {!activeDialog && messages.length > 0 && (
+      {/* Messages - Always visible, even during dialogs */}
+      {messages.length > 0 && (
         <Box flexDirection="column" marginBottom={1}>
           <MessageRenderer messages={messages} currentModel={modelNames[0]} />
         </Box>
@@ -979,21 +1031,19 @@ When the user asks you to work with files or code, you can help them directly.`;
         </Box>
       )}
 
-      {/* Input */}
+      {/* Input - Use MultiLineInput for better UX */}
       {(!activeDialog || activeDialog === 'commands') && !isProcessing && (
-        <Box marginTop={1}>
-          <Text color="orange" bold>{'> '}</Text>
-          <TextInput
-            value={inputValue}
-            onChange={handleInputChange}
-            onSubmit={handleInputSubmit}
-            placeholder="Type your message..."
-          />
-        </Box>
+        <MultiLineInput
+          value={inputValue}
+          onChange={handleInputChange}
+          onSubmit={handleInputSubmit}
+          placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
+          disabled={false}
+        />
       )}
 
-      {/* Help text */}
-      {!activeDialog && !isProcessing && (
+      {/* Help text - Always visible */}
+      {!isProcessing && (
         <Box marginTop={1}>
           <Text color="orange" dimColor>
             / = commands | ↑↓ = navigate | Tab = thinking | Esc = cancel | /help = all commands & quick switches
