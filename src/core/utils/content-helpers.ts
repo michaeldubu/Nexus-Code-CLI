@@ -86,12 +86,19 @@ export function contentSummary(content: string | ContentBlock[]): string {
 
 /**
  * Convert our ContentBlock format to Anthropic SDK format
+ * FIXED: Returns string for single text blocks, array for multi-part content (like the working multi-chat!) 🔥
  */
 export function toAnthropicContent(content: string | ContentBlock[]): any {
   if (typeof content === 'string') {
     return content;
   }
 
+  // If it's a single text block, return just the string (not array) - THIS IS THE FIX!
+  if (content.length === 1 && content[0].type === 'text') {
+    return content[0].text;
+  }
+
+  // Multiple blocks or non-text blocks - return array
   return content.map((block) => {
     if (block.type === 'text') {
       return {

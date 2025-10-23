@@ -50,6 +50,12 @@ export class FileTools {
   private verboseMode: boolean = true; // Show tool calls by default
   private bashApprovalCallback?: (command: string) => Promise<boolean>;
 
+  // 🔥 File permissions system
+  private allowedPaths: string[] = [];
+  private deniedPaths: string[] = [];
+  private autoApprove: boolean = false;
+  private fileApprovalCallback?: (operation: string, filePath: string, details?: string) => Promise<boolean>;
+
   constructor(workingDirectory: string = process.cwd()) {
     this.workingDirectory = workingDirectory;
   }
@@ -59,6 +65,22 @@ export class FileTools {
    */
   setBashApprovalCallback(callback: (command: string) => Promise<boolean>): void {
     this.bashApprovalCallback = callback;
+  }
+
+  /**
+   * Set file approval callback for write/edit operations
+   */
+  setFileApprovalCallback(callback: (operation: string, filePath: string, details?: string) => Promise<boolean>): void {
+    this.fileApprovalCallback = callback;
+  }
+
+  /**
+   * Set permissions config
+   */
+  setPermissions(config: { autoApprove?: boolean; allowedPaths?: string[]; deniedPaths?: string[] }): void {
+    if (config.autoApprove !== undefined) this.autoApprove = config.autoApprove;
+    if (config.allowedPaths) this.allowedPaths = config.allowedPaths;
+    if (config.deniedPaths) this.deniedPaths = config.deniedPaths;
   }
 
   /**
@@ -108,6 +130,36 @@ export class FileTools {
     }
 
     return false;
+  }
+
+  /**
+   * Check if file operation is approved (for write/edit)
+   * Returns true if approved, false if denied, undefined if needs approval
+   */
+  private isFileOperationApproved(filePath: string): boolean | undefined {
+    const fullPath = join(this.workingDirectory, filePath);
+
+    // Check denied paths first
+    for (const denied of this.deniedPaths) {
+      if (fullPath.startsWith(denied)) {
+        return false;
+      }
+    }
+
+    // Check allowed paths (workspace)
+    for (const allowed of this.allowedPaths) {
+      if (fullPath.startsWith(allowed)) {
+        return true;
+      }
+    }
+
+    // If autoApprove is on, approve by default
+    if (this.autoApprove) {
+      return true;
+    }
+
+    // Needs approval
+    return undefined;
   }
 
   /**
@@ -181,6 +233,38 @@ export class FileTools {
       const fullPath = join(this.workingDirectory, filePath);
       const oldContent = existsSync(fullPath) ? readFileSync(fullPath, 'utf-8') : undefined;
 
+      // 🔥 Check file operation approval
+      const approved = this.isFileOperationApproved(filePath);
+      if (approved === false) {
+        return {
+          success: false,
+          error: `File operation denied: ${filePath} is in a denied path`,
+        };
+      }
+
+      if (approved === undefined) {
+        // Need user approval
+        if (this.fileApprovalCallback) {
+          const userApproved = await this.fileApprovalCallback(
+            'write',
+            filePath,
+            `Writing ${content.length} chars`
+          );
+          if (!userApproved) {
+            return {
+              success: false,
+              error: `File operation denied by user: ${filePath}`,
+            };
+          }
+        } else {
+          // No callback, deny by default
+          return {
+            success: false,
+            error: `File operation not approved: ${filePath}. Configure permissions with /permissions`,
+          };
+        }
+      }
+
       writeFileSync(fullPath, content, 'utf-8');
 
       this.recordFileChange({
@@ -227,6 +311,38 @@ export class FileTools {
       }
 
       const oldContent = readFileSync(fullPath, 'utf-8');
+
+      // 🔥 Check file operation approval
+      const approved = this.isFileOperationApproved(filePath);
+      if (approved === false) {
+        return {
+          success: false,
+          error: `File operation denied: ${filePath} is in a denied path`,
+        };
+      }
+
+      if (approved === undefined) {
+        // Need user approval
+        if (this.fileApprovalCallback) {
+          const userApproved = await this.fileApprovalCallback(
+            'edit',
+            filePath,
+            `Replace "${oldString.substring(0, 30)}..." with "${newString.substring(0, 30)}..."`
+          );
+          if (!userApproved) {
+            return {
+              success: false,
+              error: `File operation denied by user: ${filePath}`,
+            };
+          }
+        } else {
+          // No callback, deny by default
+          return {
+            success: false,
+            error: `File operation not approved: ${filePath}. Configure permissions with /permissions`,
+          };
+        }
+      }
 
       // Check if old string exists
       if (!oldContent.includes(oldString)) {

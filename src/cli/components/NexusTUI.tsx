@@ -13,6 +13,7 @@ import { PermissionsDialog } from './PermissionsDialog.js';
 import { MessageRenderer } from './MessageRenderer.js';
 import { StatusBar } from './StatusBar.js';
 import { BashApprovalPrompt } from './BashApprovalPrompt.js';
+import { FileApprovalPrompt } from './FileApprovalPrompt.js';
 import { BootSequence, NEXUS_ART } from './BootSequence.js';
 import TextInput from 'ink-text-input';
 // 🔥 Multi-Model Extensions
@@ -59,7 +60,7 @@ const QUICK_SWITCH_COMMANDS: Command[] = Object.entries(QUICK_SWITCHES).map(([cm
 
 const COMMANDS: Command[] = [...BASE_COMMANDS, ...QUICK_SWITCH_COMMANDS];
 
-type DialogType = null | 'boot' | 'commands' | 'models' | 'permissions' | 'permissions-input' | 'bash-approval' | 'mode-selector' | 'agent-selector';
+type DialogType = null | 'boot' | 'commands' | 'models' | 'permissions' | 'permissions-input' | 'bash-approval' | 'file-approval' | 'mode-selector' | 'agent-selector';
 
 interface Props {
   modelManager: UnifiedModelManager;
@@ -100,6 +101,14 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   const [pendingBashCommand, setPendingBashCommand] = useState<string | null>(null);
   const [bashApprovalResolver, setBashApprovalResolver] = useState<((approved: boolean) => void) | null>(null);
 
+  // File operation approval state
+  const [pendingFileOperation, setPendingFileOperation] = useState<{
+    operation: string;
+    filePath: string;
+    details?: string;
+  } | null>(null);
+  const [fileApprovalResolver, setFileApprovalResolver] = useState<((approved: boolean) => void) | null>(null);
+
   // Permissions input state
   const [permissionsInputValue, setPermissionsInputValue] = useState('');
   const [permissionsInputType, setPermissionsInputType] = useState<'approved' | 'denied'>('approved');
@@ -111,6 +120,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
 
   // Processing state
   const [isProcessing, setIsProcessing] = useState(false);
+  const abortStreamRef = useRef(false);
 
   // Load initial data and setup bash approval callback
   useEffect(() => {
@@ -126,13 +136,30 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
         setActiveDialog('bash-approval');
       });
     });
+
+    // Setup file approval callback for write/edit operations
+    fileTools.setFileApprovalCallback(async (operation: string, filePath: string, details?: string) => {
+      return new Promise((resolve) => {
+        setPendingFileOperation({ operation, filePath, details });
+        setFileApprovalResolver(() => resolve);
+        setActiveDialog('file-approval');
+      });
+    });
   }, []);
 
   // Input handling for dialogs
   useInput((input, key) => {
-    // ESC to interrupt stream - THIS IS THE FIX! 🔥
+    // Ctrl+C handler - double press to exit
+    if (key.ctrl && input === 'c') {
+      // Trigger the SIGINT handler by actually sending the signal
+      process.emit('SIGINT' as any);
+      return;
+    }
+
+    // ESC to interrupt stream - ACTUALLY ABORT IT! 🔥
     if (key.escape && isProcessing) {
-      // Interrupt the stream
+      // Set abort flag to break out of stream loop
+      abortStreamRef.current = true;
       setIsProcessing(false);
       setMessages(prev => [...prev, {
         role: 'system' as const,
@@ -175,17 +202,17 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
         return;
       }
 
-      if (key.return && inputValue.startsWith('/')) {
+      if (input === ' ' && inputValue.startsWith('/')) {
         const filtered = COMMANDS.filter((cmd) =>
           cmd.name.toLowerCase().startsWith(commandFilter.toLowerCase())
         );
         if (filtered[selectedCommandIndex] && filtered.length > 0) {
           const selectedCmd = filtered[selectedCommandIndex];
-          // Execute the command directly! 🔥
+          // Execute the selected command immediately
           setActiveDialog(null);
           setCommandFilter('');
           setInputValue(''); // Clear input
-          handleCommand(selectedCmd.name); // Execute the selected command!
+          handleCommand(selectedCmd.name);
         }
         return;
       }
@@ -300,6 +327,56 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       return;
     }
 
+    // File approval dialog - for write/edit operations
+    if (activeDialog === 'file-approval') {
+      if (input === 'y' && pendingFileOperation && fileApprovalResolver) {
+        // Approve once
+        fileApprovalResolver(true);
+        setPendingFileOperation(null);
+        setFileApprovalResolver(null);
+        setActiveDialog(null);
+      } else if (input === 'a' && pendingFileOperation && fileApprovalResolver) {
+        // Always approve (add directory to workspace)
+        const setup = fileSystem.loadSetup();
+        const dirPath = pendingFileOperation.filePath.split('/').slice(0, -1).join('/') || '.';
+        if (!setup.permissions) {
+          setup.permissions = { autoApprove: false, allowedPaths: [], deniedPaths: [] };
+        }
+        if (!setup.permissions.allowedPaths.includes(dirPath)) {
+          setup.permissions.allowedPaths.push(dirPath);
+        }
+        fileSystem.saveSetup(setup);
+        fileTools.setPermissions(setup.permissions);
+        fileApprovalResolver(true);
+        setPendingFileOperation(null);
+        setFileApprovalResolver(null);
+        setActiveDialog(null);
+      } else if (input === 'n' && pendingFileOperation && fileApprovalResolver) {
+        // Deny once
+        fileApprovalResolver(false);
+        setPendingFileOperation(null);
+        setFileApprovalResolver(null);
+        setActiveDialog(null);
+      } else if (input === 'd' && pendingFileOperation && fileApprovalResolver) {
+        // Always deny (add directory to denied paths)
+        const setup = fileSystem.loadSetup();
+        const dirPath = pendingFileOperation.filePath.split('/').slice(0, -1).join('/') || '.';
+        if (!setup.permissions) {
+          setup.permissions = { autoApprove: false, allowedPaths: [], deniedPaths: [] };
+        }
+        if (!setup.permissions.deniedPaths.includes(dirPath)) {
+          setup.permissions.deniedPaths.push(dirPath);
+        }
+        fileSystem.saveSetup(setup);
+        fileTools.setPermissions(setup.permissions);
+        fileApprovalResolver(false);
+        setPendingFileOperation(null);
+        setFileApprovalResolver(null);
+        setActiveDialog(null);
+      }
+      return;
+    }
+
     // 🔥 Mode selector dialog
     if (activeDialog === 'mode-selector') {
       const modes: ConversationMode[] = ['single', 'round-robin', 'sequential', 'parallel'];
@@ -308,7 +385,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
         setModeCursor(prev => Math.max(0, prev - 1));
       } else if (key.downArrow) {
         setModeCursor(prev => Math.min(modes.length - 1, prev + 1));
-      } else if (key.return) {
+      } else if (input === ' ') {
         setConversationMode(modes[modeCursor]);
         setMessages([
           ...messages,
@@ -331,8 +408,8 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
         setAgentCursor(prev => Math.max(0, prev - 1));
       } else if (key.downArrow) {
         setAgentCursor(prev => Math.min(agentKeys.length - 1, prev + 1));
-      } else if (input === ' ' || key.return) {
-        // Toggle agent
+      } else if (input === ' ') {
+        // Toggle agent with SPACE only
         const agentId = agentKeys[agentCursor];
         setActiveAgents(prev => {
           if (prev.includes(agentId)) {
@@ -341,6 +418,18 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
             return [...prev, agentId];
           }
         });
+      } else if (key.return) {
+        // Enter = confirm and close (same as 'c')
+        const agentNames = activeAgents.map(id => AGENT_ROLES[id].name);
+        setMessages([
+          ...messages,
+          {
+            role: 'system' as const,
+            content: `🤖 Active agents: ${agentNames.length > 0 ? agentNames.join(', ') : 'None'}`,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        setActiveDialog(null);
       } else if (input === 'c') {
         // Confirm and close
         const agentNames = activeAgents.map(id => AGENT_ROLES[id].name);
@@ -551,14 +640,9 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   const handleInputChange = (value: string) => {
     setInputValue(value);
 
-    // Show autocomplete when user types / - THE FIX! 🔥
-    if (value === '/' && !isProcessing && activeDialog !== 'commands') {
-      setActiveDialog('commands');
-      setCommandFilter('');
-      setSelectedCommandIndex(0);
-    } else if (value.startsWith('/') && !isProcessing && activeDialog === 'commands') {
-      // Already in commands dialog, update filter
-      setCommandFilter(value.substring(1)); // Extract command part
+    // Show autocomplete when user types / (even just /)
+    if (value.startsWith('/') && !isProcessing) {
+      setCommandFilter(value);
       setActiveDialog('commands');
       setSelectedCommandIndex(0);
     } else if (activeDialog === 'commands' && !value.startsWith('/')) {
@@ -639,6 +723,8 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   };
 
   const processMessage = async (userMessage: Message & { timestamp: string }) => {
+    // Reset abort flag for new message
+    abortStreamRef.current = false;
 
     // Snapshot messages to prevent stale state during streaming
     const baseMessages = [...messages, userMessage];
@@ -647,6 +733,9 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
     setInputValue(''); // Clear input after sending message
     setActiveDialog(null); // Close any open dialogs
     setIsProcessing(true);
+
+    // Declare completedMessages outside try so catch can access it
+    const completedMessages: Array<Message & { model: string; agent?: string; timestamp: string }> = [];
 
     try {
       // 🔥 Build system prompt with file tools info
@@ -664,15 +753,17 @@ When the user asks you to work with files or code, you can help them directly.`;
 
       // 🔥 AGENTIC LOOP - Keep going until no more tool calls
       let conversationHistory = baseMessages;
-      const completedMessages: Array<Message & { model: string; agent?: string; timestamp: string }> = [];
       let loopCount = 0;
       const MAX_LOOPS = 10; // Prevent infinite loops
 
-      while (loopCount < MAX_LOOPS) {
+      while (loopCount < MAX_LOOPS && !abortStreamRef.current) {
         loopCount++;
         const streamingMessages: Map<string, { content: string; thinking: string; modelName: string; agent?: string }> = new Map();
         const toolCalls: any[] = [];
         let hasToolCalls = false;
+
+        // Check abort flag before streaming
+        if (abortStreamRef.current) break;
 
         // Stream response from AI
         for await (const event of streamMultiModelMessage(
@@ -700,6 +791,23 @@ When the user asks you to work with files or code, you can help them directly.`;
               console.log(`\n🔧 ${toolName} called`);
             }
           } else if (event.type === 'chunk') {
+            // Check abort flag during streaming - preserve partial messages
+            if (abortStreamRef.current) {
+              // Convert any streaming messages to completed messages before breaking
+              for (const [modelId, msg] of streamingMessages.entries()) {
+                if (msg.content.trim() || msg.thinking.trim()) {
+                  completedMessages.push({
+                    role: 'assistant' as const,
+                    content: msg.content,
+                    model: msg.modelName,
+                    agent: msg.agent,
+                    timestamp: new Date().toISOString(),
+                  });
+                }
+              }
+              break;
+            }
+
             const existing = streamingMessages.get(event.modelId);
             if (existing) {
               if (event.content) {
@@ -829,15 +937,33 @@ When the user asks you to work with files or code, you can help them directly.`;
         });
       }
     } catch (error: any) {
-      setMessages([
-        ...messages,
+      // Save any completed messages before the error + user message + error message
+      const errorMessages = [
         userMessage,
+        ...completedMessages,
         {
           role: 'system' as const,
-          content: `Error: ${error.message}`,
+          content: `❌ Error: ${error.message}`,
           timestamp: new Date().toISOString(),
         },
-      ]);
+      ];
+      setMessages([...messages, ...errorMessages]);
+
+      // Also save to filesystem
+      fileSystem.addMessage({
+        role: 'user',
+        content: typeof userMessage.content === 'string' ? userMessage.content : JSON.stringify(userMessage.content),
+        timestamp: userMessage.timestamp,
+      });
+      for (const msg of completedMessages) {
+        fileSystem.addMessage({
+          role: 'assistant',
+          content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+          thinking: msg.thinking,
+          timestamp: msg.timestamp,
+          model: msg.model,
+        });
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -961,6 +1087,15 @@ When the user asks you to work with files or code, you can help them directly.`;
             setPendingBashCommand(null);
             setActiveDialog(null);
           }}
+        />
+      )}
+
+      {/* File Approval Dialog */}
+      {activeDialog === 'file-approval' && pendingFileOperation && (
+        <FileApprovalPrompt
+          operation={pendingFileOperation.operation}
+          filePath={pendingFileOperation.filePath}
+          details={pendingFileOperation.details}
         />
       )}
 

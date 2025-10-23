@@ -67,7 +67,7 @@ export const CommandAutocomplete: React.FC<Props> = ({
 
       <Box marginTop={1}>
         <Text color="gray" dimColor>
-          ↑↓ Navigate | Enter = Execute | Esc = Cancel | Type to filter
+          ↑↓ Navigate | Enter = Select | Esc = Cancel | Type to filter
         </Text>
       </Box>
     </Box>

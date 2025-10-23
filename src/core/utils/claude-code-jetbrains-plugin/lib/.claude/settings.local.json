@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//tmp/jar-extract/sdk/io/**)",
+      "Bash(java -jar /tmp/cfr-0.152.jar:*)",
+      "Read(//tmp/decompiled/com/anthropic/code/plugin/services/**)",
+      "Read(//tmp/decompiled/io/modelcontextprotocol/kotlin/sdk/client/**)",
+      "Read(//tmp/decompiled/io/modelcontextprotocol/kotlin/sdk/shared/**)",
+      "Read(//tmp/jar-extract/plugin/**)",
+      "Read(//home/michael/Documents/GitHub/Nexus-Code-CLI/src/cli/components/**)",
+      "Read(//home/michael/Documents/GitHub/Nexus-Code-CLI/**)",
+      "Read(//tmp/decompiled/com/anthropic/code/plugin/mcp/tools/**)",
+      "Read(//tmp/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

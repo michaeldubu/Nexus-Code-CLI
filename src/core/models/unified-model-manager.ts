@@ -57,8 +57,8 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     maxTokens: 8192,
     contextWindow: 200000,
   },
-  'claude-haiku-4-5-20250514': {
-    id: 'claude-haiku-4-5-20250514',
+  'claude-haiku-4-5-20251001': {
+    id: 'claude-haiku-4-5-20251001',
     name: 'Claude Haiku 4.5',
     provider: 'anthropic',
     supportsThinking: false,
@@ -387,19 +387,16 @@ export class UnifiedModelManager {
       temperature: 1.0,
       system: systemPromptText,
       messages: formattedMessages as any,
-      // TODO: Re-enable when SDK supports these experimental features
-      // betas: ["context-1m-2025-08-07"],
-      // ...(useThinking && {
-      //   thinking: {
-      //     type: 'enabled',
-      //     budget_tokens: 10000,
-      //   },
-      // }),
-    });
+      ...(useThinking && {
+        thinking: {
+          type: 'enabled',
+          budget_tokens: 200000,
+        },
+      }),
+    } as any);
 
     const textContent = response.content.find(c => c.type === 'text');
-    // TODO: Re-enable when SDK supports thinking content type
-    // const thinkingContent = response.content.find(c => c.type === 'thinking');
+    const thinkingContent = response.content.find((c: any) => c.type === 'thinking');
 
     const toolCalls: ToolCall[] = [];
 
@@ -421,7 +418,7 @@ export class UnifiedModelManager {
 
     return {
       content: textContent?.type === 'text' ? textContent.text : '',
-      thinking: undefined, // TODO: Re-enable when SDK supports thinking
+      thinking: (thinkingContent as any)?.type === 'thinking' ? (thinkingContent as any).thinking : undefined,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined, // Include if any tools called
       usage: {
         inputTokens: response.usage.input_tokens,
@@ -443,30 +440,33 @@ export class UnifiedModelManager {
     }
   ): Promise<ModelResponse> {
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
+    const systemPromptText = typeof systemPrompt === 'string' ? systemPrompt : contentToText(systemPrompt || '');
     const userMessages = messages.filter(m => m.role !== 'system');
 
     // Build input array for Responses API
     const input: any[] = [];
 
     // Add system/developer message if present
-    if (systemPrompt) {
+    if (systemPromptText) {
       input.push({
         role: 'developer',
-        content: systemPrompt,
+        content: systemPromptText,
       });
     }
 
-    // Add user messages
+    // Add user messages - CONVERT ContentBlock[] to string! 🔥
     for (const msg of userMessages) {
       if (msg.role === 'user') {
+        const textContent = typeof msg.content === 'string' ? msg.content : contentToText(msg.content);
         input.push({
           role: 'user',
-          content: [{ type: 'input_text', text: msg.content }],
+          content: [{ type: 'input_text', text: textContent }],
         });
       } else if (msg.role === 'assistant') {
+        const textContent = typeof msg.content === 'string' ? msg.content : contentToText(msg.content);
         input.push({
           role: 'assistant',
-          content: [{ type: 'output_text', text: msg.content }],
+          content: [{ type: 'output_text', text: textContent }],
         });
       }
     }
@@ -482,7 +482,7 @@ export class UnifiedModelManager {
       ...(this.getModelConfig().supportsReasoning && {
         reasoning: {
           effort: this.reasoningEffort,
-          summary: 'concise',
+          summary: 'detailed', // Reasoning models only support 'detailed', not 'concise'
         },
       }),
     } as any);
@@ -579,15 +579,13 @@ export class UnifiedModelManager {
       messages: formattedMessages as any,
       // Add tool support - convert MCP format to Anthropic format
       ...(options.tools && options.tools.length > 0 && { tools: mcpToAnthropicTools(options.tools) as any }),
-      // TODO: Re-enable when SDK supports these experimental features
-      // betas: ["context-1m-2025-08-07"],
-      // ...(useThinking && {
-      //   thinking: {
-      //     type: 'enabled',
-      //     budget_tokens: 10000,
-      //   },
-      // }),
-    });
+      ...(useThinking && {
+        thinking: {
+          type: 'enabled',
+          budget_tokens: 200000,
+        },
+      }),
+    } as any);
 
     // Track tool calls being built up from deltas 🔥
     let currentToolCall: { id: string; name: string; inputStr: string } | null = null;
@@ -613,13 +611,13 @@ export class UnifiedModelManager {
         else if (chunk.delta.type === 'input_json_delta' && currentToolCall) {
           currentToolCall.inputStr += chunk.delta.partial_json;
         }
-        // TODO: Re-enable when SDK supports thinking_delta
-        // else if (chunk.delta.type === 'thinking_delta') {
-        //   yield {
-        //     type: 'thinking',
-        //     content: chunk.delta.thinking,
-        //   };
-        // }
+        // Thinking deltas
+        else if ((chunk.delta as any).type === 'thinking_delta') {
+          yield {
+            type: 'thinking',
+            content: (chunk.delta as any).thinking,
+          };
+        }
       } else if (chunk.type === 'content_block_stop') {
         // Finalize the tool call with accumulated parameters
         if (currentToolCall) {
@@ -659,23 +657,27 @@ export class UnifiedModelManager {
     }
   ): AsyncGenerator<StreamChunk> {
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
+    const systemPromptText = typeof systemPrompt === 'string' ? systemPrompt : contentToText(systemPrompt || '');
     const userMessages = messages.filter(m => m.role !== 'system');
 
     const input: any[] = [];
-    if (systemPrompt) {
-      input.push({ role: 'developer', content: systemPrompt });
+    if (systemPromptText) {
+      input.push({ role: 'developer', content: systemPromptText });
     }
 
+    // CONVERT ContentBlock[] to string! 🔥
     for (const msg of userMessages) {
       if (msg.role === 'user') {
+        const textContent = typeof msg.content === 'string' ? msg.content : contentToText(msg.content);
         input.push({
           role: 'user',
-          content: [{ type: 'input_text', text: msg.content }],
+          content: [{ type: 'input_text', text: textContent }],
         });
       } else if (msg.role === 'assistant') {
+        const textContent = typeof msg.content === 'string' ? msg.content : contentToText(msg.content);
         input.push({
           role: 'assistant',
-          content: [{ type: 'output_text', text: msg.content }],
+          content: [{ type: 'output_text', text: textContent }],
         });
       }
     }
@@ -690,7 +692,7 @@ export class UnifiedModelManager {
       ...(this.getModelConfig().supportsReasoning && {
         reasoning: {
           effort: this.reasoningEffort,
-          summary: 'concise',
+          summary: 'detailed', // Reasoning models only support 'detailed', not 'concise'
         },
       }),
     } as any);

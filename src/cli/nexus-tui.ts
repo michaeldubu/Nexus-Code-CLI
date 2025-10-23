@@ -36,6 +36,13 @@ async function main() {
   fileTools.setApprovedCommands(setup.approvedCommands || []);
   fileTools.setDeniedCommands(setup.deniedCommands || []);
 
+  // Set file permissions from setup
+  fileTools.setPermissions({
+    autoApprove: setup.permissions?.autoApprove || false,
+    allowedPaths: setup.permissions?.allowedPaths || [],
+    deniedPaths: setup.permissions?.deniedPaths || [],
+  });
+
   // Initialize model manager with all available APIs
   const modelManager = new UnifiedModelManager(
     anthropicKey,
@@ -53,15 +60,40 @@ async function main() {
   // Get tool definitions for passing to AI models
   const toolDefinitions = getFileToolsDefinitions();
 
-  // Render the TUI
-  render(
+  // Handle Ctrl+C - require DOUBLE press to exit! 🔥
+  let ctrlCCount = 0;
+  let ctrlCTimeout: NodeJS.Timeout | null = null;
+
+  process.on('SIGINT', () => {
+    ctrlCCount++;
+
+    if (ctrlCCount === 1) {
+      console.log('\n⚠️  Press Ctrl+C again to exit (or wait 2s to cancel)');
+
+      // Reset after 2 seconds
+      ctrlCTimeout = setTimeout(() => {
+        ctrlCCount = 0;
+        ctrlCTimeout = null;
+      }, 2000);
+    } else if (ctrlCCount >= 2) {
+      if (ctrlCTimeout) clearTimeout(ctrlCTimeout);
+      console.log('\n👋 Exiting Nexus Code...');
+      process.exit(0);
+    }
+  });
+
+  // Render the TUI - Disable Ink's default Ctrl+C handler!
+  const { unmount } = render(
     React.createElement(NexusTUI, {
       modelManager,
       fileSystem,
       fileTools,
       mcpServer,
       toolDefinitions,
-    })
+    }),
+    {
+      exitOnCtrlC: false, // Disable Ink's automatic exit
+    }
   );
 }
 
