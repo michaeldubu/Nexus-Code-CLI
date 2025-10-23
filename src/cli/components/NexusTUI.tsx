@@ -710,6 +710,13 @@ When the user asks you to work with files or code, you can help them directly.`;
           const toolName = toolCall.function?.name;
           const toolArgs = JSON.parse(toolCall.function?.arguments || '{}');
 
+          // 🔧 DEBUG: Log tool call info
+          if (fileTools.isVerbose()) {
+            console.log(`\n🔧 Tool Call Debug:`);
+            console.log(`  Name: ${toolName}`);
+            console.log(`  Args:`, toolArgs);
+          }
+
           try {
             const result = await mcpServer.executeTool(toolName, toolArgs);
 

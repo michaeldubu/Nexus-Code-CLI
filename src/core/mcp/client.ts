@@ -121,10 +121,18 @@ export class MCPServer extends EventEmitter {
     }
 
     try {
+      // 🔧 DEBUG: Log what we're passing to the handler
+      console.log(`\n🔧 MCP executeTool:`);
+      console.log(`  Tool: ${name}`);
+      console.log(`  Input type: ${typeof input}`);
+      console.log(`  Input keys:`, Object.keys(input || {}));
+      console.log(`  Input:`, JSON.stringify(input, null, 2));
+
       const result = await handler(input);
       this.emit('tool:executed', { tool: name, input, result });
       return success(result);
     } catch (error) {
+      console.log(`  ❌ Error:`, error);
       this.emit('tool:error', { tool: name, input, error });
       return failure(error as Error);
     }

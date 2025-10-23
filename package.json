@@ -5,8 +5,9 @@
   "main": "dist/index.js",
   "type": "module",
   "bin": {
-    "nexus": "./dist/cli/nexus-multi.js",
-    "nexus-code": "./dist/cli/nexus-multi.js"
+    "nexus": "./dist/cli/nexus-tui.js",
+    "nexus-code": "./dist/cli/nexus-tui.js",
+    "nexus-multi": "./dist/cli/nexus-multi.js"
   },
   "scripts": {
     "build": "tsc",
