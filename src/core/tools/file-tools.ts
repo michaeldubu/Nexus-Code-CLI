@@ -48,9 +48,17 @@ export class FileTools {
   private approvedCommands: string[] = [];
   private deniedCommands: string[] = [];
   private verboseMode: boolean = true; // Show tool calls by default
+  private bashApprovalCallback?: (command: string) => Promise<boolean>;
 
   constructor(workingDirectory: string = process.cwd()) {
     this.workingDirectory = workingDirectory;
+  }
+
+  /**
+   * Set bash approval callback - THIS FIXES THE APPROVAL DIALOG! 🔥
+   */
+  setBashApprovalCallback(callback: (command: string) => Promise<boolean>): void {
+    this.bashApprovalCallback = callback;
   }
 
   /**
@@ -373,10 +381,23 @@ export class FileTools {
     try {
       // Check if command is approved
       if (!this.isCommandApproved(command)) {
-        return {
-          success: false,
-          error: `Command not pre-approved: ${command}. Add to approved list with /permissions`,
-        };
+        // Request approval through callback - THE FIX! 🔥
+        if (this.bashApprovalCallback) {
+          const approved = await this.bashApprovalCallback(command);
+          if (!approved) {
+            return {
+              success: false,
+              error: `Command denied by user: ${command}`,
+            };
+          }
+          // Command was approved, continue execution
+        } else {
+          // No callback, fall back to error
+          return {
+            success: false,
+            error: `Command not pre-approved: ${command}. Add to approved list with /permissions`,
+          };
+        }
       }
 
       const { stdout, stderr } = await execAsync(command, {

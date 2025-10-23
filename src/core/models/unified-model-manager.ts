@@ -7,7 +7,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { toAnthropicContent, contentToText } from '../utils/content-helpers.js';
-import { mcpToAnthropicTools } from '../utils/tool-converter.js';
+import { mcpToAnthropicTools, mcpToOpenAITools, mcpToGoogleTools } from '../utils/tool-converter.js';
 
 export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'ollama';
 
@@ -401,9 +401,28 @@ export class UnifiedModelManager {
     // TODO: Re-enable when SDK supports thinking content type
     // const thinkingContent = response.content.find(c => c.type === 'thinking');
 
+    const toolCalls: ToolCall[] = [];
+
+    // Extract all tool_use blocks - THIS IS THE FIX! 🔥
+    for (const contentBlock of response.content) {
+      if (contentBlock.type === 'tool_use') {
+        // Extract input parameters from tool call
+        const input = (contentBlock as any).input as Record<string, any>;
+        toolCalls.push({
+          id: (contentBlock as any).id,
+          type: 'tool_use',
+          function: {
+            name: (contentBlock as any).name,
+            arguments: JSON.stringify(input), // Convert to JSON string for consistency
+          },
+        });
+      }
+    }
+
     return {
       content: textContent?.type === 'text' ? textContent.text : '',
       thinking: undefined, // TODO: Re-enable when SDK supports thinking
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined, // Include if any tools called
       usage: {
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens,
@@ -570,20 +589,17 @@ export class UnifiedModelManager {
       // }),
     });
 
+    // Track tool calls being built up from deltas 🔥
+    let currentToolCall: { id: string; name: string; inputStr: string } | null = null;
+
     for await (const chunk of stream) {
       if (chunk.type === 'content_block_start') {
-        // Handle tool_use blocks
+        // Start tracking tool_use blocks
         if (chunk.content_block.type === 'tool_use') {
-          yield {
-            type: 'tool_call',
-            toolCall: {
-              id: chunk.content_block.id,
-              type: 'function',
-              function: {
-                name: chunk.content_block.name,
-                arguments: JSON.stringify(chunk.content_block.input),
-              },
-            },
+          currentToolCall = {
+            id: chunk.content_block.id,
+            name: chunk.content_block.name,
+            inputStr: '', // Will accumulate from deltas - THIS IS THE FIX!
           };
         }
       } else if (chunk.type === 'content_block_delta') {
@@ -593,6 +609,10 @@ export class UnifiedModelManager {
             content: chunk.delta.text,
           };
         }
+        // Accumulate tool input JSON from deltas 🎯
+        else if (chunk.delta.type === 'input_json_delta' && currentToolCall) {
+          currentToolCall.inputStr += chunk.delta.partial_json;
+        }
         // TODO: Re-enable when SDK supports thinking_delta
         // else if (chunk.delta.type === 'thinking_delta') {
         //   yield {
@@ -600,6 +620,27 @@ export class UnifiedModelManager {
         //     content: chunk.delta.thinking,
         //   };
         // }
+      } else if (chunk.type === 'content_block_stop') {
+        // Finalize the tool call with accumulated parameters
+        if (currentToolCall) {
+          try {
+            const input = JSON.parse(currentToolCall.inputStr);
+            yield {
+              type: 'tool_call',
+              toolCall: {
+                id: currentToolCall.id,
+                type: 'function',
+                function: {
+                  name: currentToolCall.name,
+                  arguments: currentToolCall.inputStr, // Full JSON string
+                },
+              },
+            };
+          } catch (e) {
+            console.error(`🔥 Failed to parse tool input: ${currentToolCall.inputStr}`, e);
+          }
+          currentToolCall = null;
+        }
       } else if (chunk.type === 'message_stop') {
         yield { type: 'done' };
       }

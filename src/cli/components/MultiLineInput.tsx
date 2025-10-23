@@ -47,17 +47,18 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
         return;
       }
 
-      // Shift+Enter = New line (like every chat app)
-      if (key.return && key.shift) {
+      // Backslash+Enter = New line (like Claude Code! 🔥)
+      if (key.return && value[cursorOffset - 1] === '\\') {
+        // Remove the backslash and add newline
         const newValue =
-          value.slice(0, cursorOffset) + '\n' + value.slice(cursorOffset);
+          value.slice(0, cursorOffset - 1) + '\n' + value.slice(cursorOffset);
         onChange(newValue);
-        setCursorOffset(cursorOffset + 1);
+        setCursorOffset(cursorOffset);
         return;
       }
 
       // Regular Enter = Submit (send the message)
-      if (key.return && !key.shift) {
+      if (key.return) {
         handleSubmit();
         return;
       }
@@ -226,25 +227,41 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
 
       {/* Input area */}
       <Box flexDirection="column" borderStyle="round" borderColor="orange" paddingX={1}>
-        {lines.map((line, idx) => (
-          <Box key={idx}>
-            <Text color="orange" bold>{idx === 0 ? '> ' : '  '}</Text>
-            <Text color="white">
-              {line || (idx === 0 && !value ? <Text dimColor>{placeholder}</Text> : ' ')}
-              {idx === currentLine && (
-                <Text backgroundColor="orange" color="black">
-                  {value[cursorOffset] || ' '}
+        {lines.map((line, idx) => {
+          // Render line with cursor if this is the current line
+          if (idx === currentLine) {
+            const beforeCursor = line.slice(0, currentColumn);
+            const atCursor = line[currentColumn] || ' ';
+            const afterCursor = line.slice(currentColumn + 1);
+
+            return (
+              <Box key={idx}>
+                <Text color="orange" bold>{idx === 0 ? '> ' : '  '}</Text>
+                <Text color="white">
+                  {beforeCursor}
+                  <Text backgroundColor="orange" color="black">{atCursor}</Text>
+                  {afterCursor}
                 </Text>
-              )}
-            </Text>
-          </Box>
-        ))}
+              </Box>
+            );
+          } else {
+            // Regular line without cursor
+            return (
+              <Box key={idx}>
+                <Text color="orange" bold>{idx === 0 ? '> ' : '  '}</Text>
+                <Text color="white">
+                  {line || (idx === 0 && !value ? <Text dimColor>{placeholder}</Text> : ' ')}
+                </Text>
+              </Box>
+            );
+          }
+        })}
       </Box>
 
       {/* Help text */}
       <Box marginTop={1}>
         <Text color="gray" dimColor>
-          Enter = send | Shift+Enter = new line | Esc = cancel
+          Enter = send | \+Enter = new line | Esc = cancel
         </Text>
       </Box>
 

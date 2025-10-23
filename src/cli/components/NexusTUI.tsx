@@ -2,7 +2,7 @@
  * Nexus TUI - Main Application Component
  * Full-featured terminal UI with Ink
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
 import { UnifiedModelManager, AVAILABLE_MODELS, Message } from '../../core/models/unified-model-manager.js';
 import { NexusFileSystem } from '../../core/filesystem/nexus-fs.js';
@@ -104,18 +104,44 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   const [permissionsInputValue, setPermissionsInputValue] = useState('');
   const [permissionsInputType, setPermissionsInputType] = useState<'approved' | 'denied'>('approved');
 
+  // Debounce/spam prevention - No more toggle spam! 🛡️
+  const [lastToggleTime, setLastToggleTime] = useState(0);
+  const [thinkingToggling, setThinkingToggling] = useState(false);
+  const tabTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Processing state
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Load initial data
+  // Load initial data and setup bash approval callback
   useEffect(() => {
     const setup = fileSystem.loadSetup();
     setApprovedCommands(setup.approvedCommands || []);
     setDeniedCommands(setup.deniedCommands || []);
+
+    // Setup bash approval callback - THE FIX! 🔥
+    fileTools.setBashApprovalCallback(async (command: string) => {
+      return new Promise((resolve) => {
+        setPendingBashCommand(command);
+        setBashApprovalResolver(() => resolve);
+        setActiveDialog('bash-approval');
+      });
+    });
   }, []);
 
   // Input handling for dialogs
   useInput((input, key) => {
+    // ESC to interrupt stream - THIS IS THE FIX! 🔥
+    if (key.escape && isProcessing) {
+      // Interrupt the stream
+      setIsProcessing(false);
+      setMessages(prev => [...prev, {
+        role: 'system' as const,
+        content: '⚠️ Stream interrupted by user',
+        timestamp: new Date().toISOString(),
+      }]);
+      return;
+    }
+
     // Global shortcuts
     if (key.escape) {
       // Special handling for permissions-input - go back to permissions dialog
@@ -155,11 +181,11 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
         );
         if (filtered[selectedCommandIndex] && filtered.length > 0) {
           const selectedCmd = filtered[selectedCommandIndex];
-          // Set input to selected command and let normal submit flow handle it
-          setInputValue(selectedCmd.name);
+          // Execute the command directly! 🔥
           setActiveDialog(null);
           setCommandFilter('');
-          // Don't call handleCommand here - let TextInput.onSubmit do it to avoid double-execution
+          setInputValue(''); // Clear input
+          handleCommand(selectedCmd.name); // Execute the selected command!
         }
         return;
       }
@@ -234,31 +260,41 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       return;
     }
 
-    // Bash approval dialog
+    // Bash approval dialog - NOW PROPERLY HOOKED UP! 🔥
     if (activeDialog === 'bash-approval') {
-      if (input === 'y' && pendingBashCommand) {
+      if (input === 'y' && pendingBashCommand && bashApprovalResolver) {
         // Approve once
+        bashApprovalResolver(true);
         setPendingBashCommand(null);
+        setBashApprovalResolver(null);
         setActiveDialog(null);
-      } else if (input === 'a' && pendingBashCommand) {
+      } else if (input === 'a' && pendingBashCommand && bashApprovalResolver) {
         // Always approve
         const setup = fileSystem.loadSetup();
         setup.approvedCommands.push(pendingBashCommand);
         fileSystem.saveSetup(setup);
         setApprovedCommands(setup.approvedCommands);
+        fileTools.setApprovedCommands(setup.approvedCommands); // Update file tools
+        bashApprovalResolver(true);
         setPendingBashCommand(null);
+        setBashApprovalResolver(null);
         setActiveDialog(null);
-      } else if (input === 'n' && pendingBashCommand) {
+      } else if (input === 'n' && pendingBashCommand && bashApprovalResolver) {
         // Deny once
+        bashApprovalResolver(false);
         setPendingBashCommand(null);
+        setBashApprovalResolver(null);
         setActiveDialog(null);
-      } else if (input === 'd' && pendingBashCommand) {
+      } else if (input === 'd' && pendingBashCommand && bashApprovalResolver) {
         // Always deny
         const setup = fileSystem.loadSetup();
         setup.deniedCommands.push(pendingBashCommand);
         fileSystem.saveSetup(setup);
         setDeniedCommands(setup.deniedCommands);
+        fileTools.setDeniedCommands(setup.deniedCommands); // Update file tools
+        bashApprovalResolver(false);
         setPendingBashCommand(null);
+        setBashApprovalResolver(null);
         setActiveDialog(null);
       }
       return;
@@ -321,29 +357,17 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       return;
     }
 
-    // Tab key for thinking/reasoning toggle (when no dialog open)
+    // Tab key for thinking/reasoning toggle - NO MESSAGE SPAM! 🔥
     if (key.tab && !activeDialog) {
       const config = modelManager.getModelConfig();
       if (config.supportsThinking) {
         modelManager.toggleThinking();
-        setMessages([
-          ...messages,
-          {
-            role: 'system' as const,
-            content: `Extended Thinking: ${modelManager.isThinkingEnabled() ? 'ON' : 'OFF'}`,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
+        // Force re-render to update status display
+        setMessages(prev => [...prev]);
       } else if (config.supportsReasoning) {
-        const newLevel = modelManager.toggleReasoning();
-        setMessages([
-          ...messages,
-          {
-            role: 'system' as const,
-            content: `Reasoning Level: ${newLevel.toUpperCase()}`,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
+        modelManager.toggleReasoning();
+        // Force re-render to update status display
+        setMessages(prev => [...prev]);
       }
     }
   });
@@ -527,9 +551,14 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   const handleInputChange = (value: string) => {
     setInputValue(value);
 
-    // Show autocomplete when user types /
-    if (value.startsWith('/') && !isProcessing) {
-      setCommandFilter(value);
+    // Show autocomplete when user types / - THE FIX! 🔥
+    if (value === '/' && !isProcessing && activeDialog !== 'commands') {
+      setActiveDialog('commands');
+      setCommandFilter('');
+      setSelectedCommandIndex(0);
+    } else if (value.startsWith('/') && !isProcessing && activeDialog === 'commands') {
+      // Already in commands dialog, update filter
+      setCommandFilter(value.substring(1)); // Extract command part
       setActiveDialog('commands');
       setSelectedCommandIndex(0);
     } else if (activeDialog === 'commands' && !value.startsWith('/')) {
@@ -721,31 +750,31 @@ When the user asks you to work with files or code, you can help them directly.`;
             const result = await mcpServer.executeTool(toolName, toolArgs);
 
             if (result.success) {
-              toolResults.push(result.data);
-              // Show tool execution in UI
-              completedMessages.push({
+              // Truncate long outputs for display (but full content goes to model)
+              const displayData = result.data.length > 500
+                ? result.data.substring(0, 500) + '\n... [truncated - full content sent to model]'
+                : result.data;
+
+              // Show truncated version in UI
+              setMessages(prev => [...prev, {
                 role: 'system' as const,
-                content: `🔧 ${toolName}(...)\n${result.data}`,
-                model: 'tool',
+                content: `🔧 ${toolName}:\n${displayData}`,
                 timestamp: new Date().toISOString(),
-              });
+              }]);
+
+              // Full content goes to model
+              toolResults.push(`${toolName}:\n${result.data}`);
             } else {
-              toolResults.push(`Error: ${result.error?.message}`);
-              completedMessages.push({
+              setMessages(prev => [...prev, {
                 role: 'system' as const,
                 content: `❌ ${toolName} failed: ${result.error?.message}`,
-                model: 'tool',
                 timestamp: new Date().toISOString(),
-              });
+              }]);
+              toolResults.push(`❌ ${toolName} failed: ${result.error?.message}`);
             }
           } catch (error: any) {
-            toolResults.push(`Error: ${error.message}`);
-            completedMessages.push({
-              role: 'system' as const,
-              content: `❌ ${toolName} error: ${error.message}`,
-              model: 'tool',
-              timestamp: new Date().toISOString(),
-            });
+            toolResults.push(`❌ ${toolName} error: ${error.message}`);
+            // Don't add duplicate system messages - just add to toolResults
           }
         }
 
@@ -755,7 +784,16 @@ When the user asks you to work with files or code, you can help them directly.`;
           content: `Tool results:\n${toolResults.join('\n\n')}`,
         };
 
-        conversationHistory = [...conversationHistory, ...completedMessages, toolResultMessage];
+        // Filter out empty assistant messages - THIS FIXES THE API ERROR! 🔥
+        const nonEmptyMessages = completedMessages.filter(msg => {
+          if (msg.role !== 'assistant') return true;
+          if (typeof msg.content === 'string') {
+            return msg.content.trim() !== '';
+          }
+          // For ContentBlock arrays, check if there's any non-empty content
+          return msg.content && msg.content.length > 0;
+        });
+        conversationHistory = [...conversationHistory, ...nonEmptyMessages, toolResultMessage];
 
         // Update UI with tool results
         setMessages([...conversationHistory]);
@@ -763,8 +801,16 @@ When the user asks you to work with files or code, you can help them directly.`;
         // Continue the loop - Claude will see the tool results and respond
       }
 
-      // Final update with all completed messages
-      setMessages([...conversationHistory, ...completedMessages]);
+      // Final update with all completed messages (filter empties here too!)
+      const finalCompletedMessages = completedMessages.filter(msg => {
+        if (msg.role !== 'assistant') return true;
+        if (typeof msg.content === 'string') {
+          return msg.content.trim() !== '';
+        }
+        // For ContentBlock arrays, check if there's any non-empty content
+        return msg.content && msg.content.length > 0;
+      });
+      setMessages([...conversationHistory, ...finalCompletedMessages]);
 
       // Save to file system
       fileSystem.addMessage({
@@ -824,15 +870,6 @@ When the user asks you to work with files or code, you can help them directly.`;
           Powered by SAAAM LLC
         </Text>
       </Box>
-
-      {/* Status Bar */}
-      <StatusBar
-        models={modelNames}
-        workingDir={fileTools.getWorkingDirectory()}
-        messageCount={messages.filter((m) => m.role !== 'system').length}
-        thinkingEnabled={config.supportsThinking ? modelManager.isThinkingEnabled() : undefined}
-        reasoningLevel={config.supportsReasoning ? modelManager.getReasoningEffort() : undefined}
-      />
 
       {/* 🔥 Mode and Agent Status */}
       {(conversationMode !== 'single' || activeAgents.length > 0) && (
@@ -1044,19 +1081,31 @@ When the user asks you to work with files or code, you can help them directly.`;
           value={inputValue}
           onChange={handleInputChange}
           onSubmit={handleInputSubmit}
-          placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
+          placeholder="Type your message... (Enter to send, \+Enter for new line)"
           disabled={false}
         />
       )}
 
       {/* Help text - Always visible */}
-      {!isProcessing && (
-        <Box marginTop={1}>
-          <Text color="orange" dimColor>
-            / = commands | ↑↓ = navigate | Tab = thinking | Esc = cancel | /help = all commands & quick switches
-          </Text>
-        </Box>
-      )}
+      <Box marginTop={1}>
+        <Text color="orange" dimColor>
+          {isProcessing
+            ? 'Press ESC to interrupt stream'
+            : '/ = commands | ↑↓ = navigate | Tab = thinking | Esc = cancel | /help = all commands & quick switches'
+          }
+        </Text>
+      </Box>
+
+      {/* Status Bar - MOVED TO BOTTOM! 🔥 */}
+      <Box marginTop={1}>
+        <StatusBar
+          models={modelNames}
+          workingDir={fileTools.getWorkingDirectory()}
+          messageCount={messages.filter((m) => m.role !== 'system').length}
+          thinkingEnabled={config.supportsThinking ? modelManager.isThinkingEnabled() : undefined}
+          reasoningLevel={config.supportsReasoning ? modelManager.getReasoningEffort() : undefined}
+        />
+      </Box>
     </Box>
   );
 };
