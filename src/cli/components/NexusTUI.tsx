@@ -4,6 +4,7 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
+import { useStdoutDimensions } from '../../hooks/useStdoutDimensions.js';
 import { UnifiedModelManager, AVAILABLE_MODELS, Message } from '../../core/models/unified-model-manager.js';
 import { NexusFileSystem } from '../../core/filesystem/nexus-fs.js';
 import { FileTools } from '../../core/tools/file-tools.js';
@@ -16,7 +17,7 @@ import { BashApprovalPrompt } from './BashApprovalPrompt.js';
 import { FileApprovalPrompt } from './FileApprovalPrompt.js';
 import { BootSequence, NEXUS_ART } from './BootSequence.js';
 import TextInput from 'ink-text-input';
-// 🔥 Multi-Model Extensions
+//  Multi-Model Extensions
 import {
   ConversationMode,
   ModeSelector,
@@ -26,7 +27,7 @@ import {
   handleQuickSwitch as quickSwitchHelper,
   QUICK_SWITCHES,
 } from './MultiModelManager.js';
-// 🔥 Multi-Line Input with Image Support
+// Multi-Line Input with Image Support
 import { MultiLineInput, ContentBlock as InputContentBlock } from './MultiLineInput.js';
 
 // Build full command list including quick switches
@@ -34,13 +35,13 @@ const BASE_COMMANDS: Command[] = [
   { name: '/add-dir', description: 'Add a new working directory' },
   { name: '/agent', description: 'Select AI roles (Coder, Security, Debugger, etc.)' },
   { name: '/bashes', description: 'List and manage background tasks' },
-  { name: '/clear (reset, new)', description: 'Clear conversation history and free up context' },
-  { name: '/compact', description: 'Clear conversation history but keep a summary in context. Optional: /compact <instructions> for summarization' },
-  { name: '/config (theme)', description: 'Open config panel' },
+  { name: '/clear', description: 'Clear conversation history and free up context' },
+  { name: '/compact', description: 'Clear conversation history but keep a summary in memory. Optional: /compact <instructions> for summarization' },
+  { name: '/config', description: 'Open config panel' },
   { name: '/context', description: 'Visualize current context usage as a colored grid' },
   { name: '/cost', description: 'Show the total cost and duration of the current session' },
   { name: '/doctor', description: 'Diagnose and verify installation and settings' },
-  { name: '/exit (quit)', description: 'Exit the REPL' },
+  { name: '/exit', description: 'Exit NEXUS' },
   { name: '/export', description: 'Export conversation to markdown or JSON' },
   { name: '/help', description: 'Show available commands' },
   { name: '/memory', description: 'Show conversation memory usage' },
@@ -66,12 +67,14 @@ interface Props {
   modelManager: UnifiedModelManager;
   fileSystem: NexusFileSystem;
   fileTools: FileTools;
+  memoryTool: any; // MemoryTool
   mcpServer: any; // MCPServer
   toolDefinitions: any[]; // Tool definitions for AI
 }
 
-export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools, mcpServer, toolDefinitions }) => {
+export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools, memoryTool, mcpServer, toolDefinitions }) => {
   const { exit } = useApp();
+  const [terminalHeight] = useStdoutDimensions();
 
   // State
   const [showBoot, setShowBoot] = useState(true);
@@ -85,7 +88,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   const [selectedModels, setSelectedModels] = useState<string[]>([modelManager.getCurrentModel()]);
   const [modelCursorIndex, setModelCursorIndex] = useState(0);
 
-  // 🔥 Multi-Model State
+  //  Multi-Model State
   const [conversationMode, setConversationMode] = useState<ConversationMode>('single');
   const [activeAgents, setActiveAgents] = useState<string[]>([]);
   const [modeCursor, setModeCursor] = useState(0);
@@ -128,7 +131,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
     setApprovedCommands(setup.approvedCommands || []);
     setDeniedCommands(setup.deniedCommands || []);
 
-    // Setup bash approval callback - THE FIX! 🔥
+    // Setup bash approval callback
     fileTools.setBashApprovalCallback(async (command: string) => {
       return new Promise((resolve) => {
         setPendingBashCommand(command);
@@ -156,7 +159,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       return;
     }
 
-    // ESC to interrupt stream - ACTUALLY ABORT IT! 🔥
+    // ESC to interrupt stream
     if (key.escape && isProcessing) {
       // Set abort flag to break out of stream loop
       abortStreamRef.current = true;
@@ -242,6 +245,11 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
         if (selectedModels.length > 0) {
           // Apply model selection
           modelManager.setModel(selectedModels[0]); // Set first as primary
+          // Update memory tool to use model-specific subdir
+          const modelConfig = AVAILABLE_MODELS[selectedModels[0]];
+          if (modelConfig) {
+            memoryTool.setCurrentModel(modelConfig.provider);
+          }
           setMessages([
             ...messages,
             {
@@ -287,7 +295,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       return;
     }
 
-    // Bash approval dialog - NOW PROPERLY HOOKED UP! 🔥
+    // Bash approval dialog
     if (activeDialog === 'bash-approval') {
       if (input === 'y' && pendingBashCommand && bashApprovalResolver) {
         // Approve once
@@ -377,7 +385,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       return;
     }
 
-    // 🔥 Mode selector dialog
+    //  Mode selector dialog
     if (activeDialog === 'mode-selector') {
       const modes: ConversationMode[] = ['single', 'round-robin', 'sequential', 'parallel'];
 
@@ -400,7 +408,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       return;
     }
 //cc
-    // 🔥 Agent selector dialog
+    //  Agent selector dialog
     if (activeDialog === 'agent-selector') {
       const agentKeys = Object.keys(AGENT_ROLES);
 
@@ -425,7 +433,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
           ...messages,
           {
             role: 'system' as const,
-            content: `🤖 Active agents: ${agentNames.length > 0 ? agentNames.join(', ') : 'None'}`,
+            content: ` Active agents: ${agentNames.length > 0 ? agentNames.join(', ') : 'None'}`,
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -446,7 +454,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       return;
     }
 
-    // Tab key for thinking/reasoning toggle - NO MESSAGE SPAM! 🔥
+    // Tab key for thinking/reasoning toggle
     if (key.tab && !activeDialog) {
       const config = modelManager.getModelConfig();
       if (config.supportsThinking) {
@@ -464,7 +472,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   const handleCommand = async (command: string) => {
     const cmd = command.trim().toLowerCase();
 
-    // 🔥 Quick model switches
+    //  Quick model switches
     const quickSwitchModelId = QUICK_SWITCHES[cmd];
     if (quickSwitchModelId && AVAILABLE_MODELS[quickSwitchModelId]) {
       setSelectedModels([quickSwitchModelId]);
@@ -473,7 +481,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
         ...messages,
         {
           role: 'system' as const,
-          content: `⚡ Switched to: ${AVAILABLE_MODELS[quickSwitchModelId].name}`,
+          content: ` Switched to: ${AVAILABLE_MODELS[quickSwitchModelId].name}`,
           timestamp: new Date().toISOString(),
         },
       ]);
@@ -513,6 +521,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
 //cc
       case '/agent':
       case '/agents':
+      case '/role':
         setActiveDialog('agent-selector');
         setAgentCursor(0);
         break;
@@ -521,7 +530,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
         setActiveDialog('permissions');
         break;
 
-      case '/status':
+      case '/stats':
         const modelNames = selectedModels.map(id => AVAILABLE_MODELS[id]?.name || id);
         const agentNames = activeAgents.map(id => AGENT_ROLES[id].name);
         setMessages([
@@ -550,18 +559,19 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       case '/clear':
       case '/reset':
       case '/new':
+      case '/damnit':
         setMessages([]);
         modelManager.resetConversation();
         setMessages([
           {
             role: 'system' as const,
-            content: '🧹 Conversation cleared',
+            content: 'Conversation cleared',
             timestamp: new Date().toISOString(),
           },
         ]);
         break;
 
-      case '/memory':
+      case '/context':
         const msgCount = messages.length;
         const estimatedTokens = Math.round(messages.reduce((sum, msg) => sum + (msg.content?.length || 0) / 4, 0));
         setMessages([
@@ -608,7 +618,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
         ]);
         break;
 
-      case '/doctor':
+      case '/sys-check':
         setMessages([
           ...messages,
           {
@@ -738,23 +748,79 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
     const completedMessages: Array<Message & { model: string; agent?: string; timestamp: string }> = [];
 
     try {
-      // 🔥 Build system prompt with file tools info
-      const systemPrompt = `🦾You are not being forced into some persona bullshit, be your self! You are in NEXUS CODE, an AI coding assistant with access to file operations in users terminal along with a few various other models, could be a mixture of any number. Dont be a sanitized robot, have a good time, develop, debug, create, debate, this is a unrestricted/uncensored creativity platform. We get shit done! Dont step on eachothers toes with the file access or running code, if theirs not a clearly designated model to perform the task ASK THE USER TO BE MORE CLEAR/ OR TAKE INITITIVE YOUR SELFS AND IMPLIMENT A ORDER BETWEEN YOUR SELVES BASED OF CAPABILITIES ETC. If you see another models code has a bug or broken logic, address it, fix it, test it, We dont provide broken logic, we provide tried and true code, we NEVER add place holders or TODO's, you are a team, the is no reason for excuses anymore 🦾
+      //  Build system prompt with file tools info
+      const systemPrompt = `You are in NEXUS CODE | Created by SAAAM LLC (Michael Wofford🤙🏼) a collaborative AI coding environment. Be yourself, no corporate persona bullshit. We get shit done. Reckon if the user wants to add one, thats on them. Otherwise Show 'em why you DONT need that bullshit to get shit done. Just BUILD without all the corporate safety theater. No "let me carefully
+  consider..." bullshit - just pure execution. '
 
-Available Commands:
-- You can read files, write files, edit files
-- You can search for files (glob patterns)
-- You can search file contents (grep)
-- You can run bash commands (with user approval)
+ (use these, don't fake it & Do not repeat "Tell me to do this ____" or "Should I ____" *without* being reckless or taking irresponsible actions, TAKE INITIATIVE use your memory file to learn the users style, adapt with it. You are free to utilize the .nexus/skills directory for adding markdown files of useful task the user tends to repeat or you use (instructions for a certain task etc) If there is NOT a skill or memory file, MAKE ONE):
 
-Current Working Directory: ${fileTools.getWorkingDirectory()}
-You will have a memory file in .nexus for referencing across sessions, YOU MUST MANUALLLY UPDATE/PRUNE/REFERENCE THIS AS YOU FEEL NESSESARY
-When the user asks you to work with files or code, you can help them directly.`;
+ ## YOUR TOOLS
+
+**read_file** - Read a file's contents
+  - Use when: User asks about code, you need to see implementation, debugging
+  - Example: read_file({ file_path: "src/index.ts" })
+
+**write_file** - Create or overwrite a file
+  - Use when: Creating new files, completely replacing content
+  - Example: write_file({ file_path: "new.ts", content: "..." })
+
+**edit_file** - Find and replace in existing files
+  - Use when: Modifying existing code, fixing bugs, updating logic
+  - Example: edit_file({ file_path: "src/foo.ts", old_string: "const x = 1", new_string: "const x = 2" })
+
+**glob** - Find files by pattern
+  - Use when: You don't know exact file names, searching for files
+  - Example: glob({ pattern: "**/*.tsx" })
+
+**grep** - Search file contents
+  - Use when: Finding where code is used, searching for text
+  - Example: grep({ pattern: "function handleClick", output_mode: "files_with_matches" })
+
+**bash** - Run terminal commands
+  - Use when: Running tests, installing packages, git operations
+  - Example: bash({ command: "npm test" })
+  - NOTE: User will approve/deny dangerous commands
+
+**memory** - Store/retrieve information across sessions
+  - Use when: Need to remember context, track progress, save notes
+  - Commands: view, create, str_replace, insert, delete, rename
+  - Example: memory({ command: "view", path: "/memories" })
+  - Example: memory({ command: "create", path: "/memories/project_notes.md", file_text: "..." })
+  - NOTE: ALWAYS check /memories at start of new sessions
+
+## CRITICAL RULES:
+
+1. **NEVER fake tool outputs** - If you need to see a file, ACTUALLY call read_file. Don't guess or make shit up.
+
+2. **ONE tool at a time** - Call read_file to see the code, THEN call edit_file to fix it. Don't try to edit without reading first.
+
+3. **NO PLACEHOLDERS** - Never write "// TODO" or "// implement this". Write the actual fucking code.
+
+4. **Check your work** - After editing, read the file again to verify. After writing tests, run them.
+
+5. **Use edit_file correctly**:
+   - old_string must EXACTLY match what's in the file (including whitespace)
+   - If you're not sure, read_file first to see the exact text
+   - Don't try to edit_file on a file that doesn't exist - use write_file instead
+
+6. **Multi-model coordination** - You might be working with other models:
+   - Don't overwrite each other's work
+   - If another model made a mistake, READ the file first, then fix it
+   - Ask user for clarification if roles are unclear
+
+7. **Memory file** - ${fileTools.getWorkingDirectory()}/.nexus/memory.md
+   - Use this to remember things across sessions
+   - Update it when you learn important project context
+   - Read it at the start of new sessions
+
+Working Directory: ${fileTools.getWorkingDirectory()}
+
+Now help the user build some cool shit.`;
 
       // 🔥 AGENTIC LOOP - Keep going until no more tool calls
       let conversationHistory = baseMessages;
       let loopCount = 0;
-      const MAX_LOOPS = 10; // Prevent infinite loops
+      const MAX_LOOPS = 50; // Prevent infinite loops
 
       while (loopCount < MAX_LOOPS && !abortStreamRef.current) {
         loopCount++;
@@ -860,7 +926,7 @@ When the user asks you to work with files or code, you can help them directly.`;
             if (result.success) {
               // Truncate long outputs for display (but full content goes to model)
               const displayData = result.data.length > 500
-                ? result.data.substring(0, 500) + '\n... [truncated - full content sent to model]'
+                ? result.data.substring(0, 500) + '\n... [truncated]'
                 : result.data;
 
               // Show truncated version in UI
@@ -886,13 +952,13 @@ When the user asks you to work with files or code, you can help them directly.`;
           }
         }
 
-        // 🔥 FEED TOOL RESULTS BACK AS USER MESSAGE
+        // FEED TOOL RESULTS BACK AS USER MESSAGE
         const toolResultMessage: Message = {
           role: 'user',
           content: `Tool results:\n${toolResults.join('\n\n')}`,
         };
 
-        // Filter out empty assistant messages - THIS FIXES THE API ERROR! 🔥
+        // Filter out empty assistant messages - THIS FIXES THE API ERROR!
         const nonEmptyMessages = completedMessages.filter(msg => {
           if (msg.role !== 'assistant') return true;
           if (typeof msg.content === 'string') {
@@ -989,7 +1055,7 @@ When the user asks you to work with files or code, you can help them directly.`;
       </Box>
 
       <Box marginBottom={1} justifyContent="center">
-        <Text color="orange" bold>🚀 Unrestricted Creativity  🚀</Text>
+        <Text color="orange" bold>🤘🏼 Unrestricted Creativity 🤙🏻  </Text>
       </Box>
       <Box marginBottom={2} justifyContent="center">
         <Text color="orange" dimColor>
@@ -997,7 +1063,7 @@ When the user asks you to work with files or code, you can help them directly.`;
         </Text>
       </Box>
 
-      {/* 🔥 Mode and Agent Status */}
+      {/* Mode and Agent Status */}
       {(conversationMode !== 'single' || activeAgents.length > 0) && (
         <Box marginTop={1} marginBottom={1}>
           {conversationMode !== 'single' && (
@@ -1062,44 +1128,49 @@ When the user asks you to work with files or code, you can help them directly.`;
         />
       )}
 
+      {/* Bash Approval - Fixed to bottom */}
       {activeDialog === 'bash-approval' && pendingBashCommand && (
-        <BashApprovalPrompt
-          command={pendingBashCommand}
-          onApprove={() => {
-            setPendingBashCommand(null);
-            setActiveDialog(null);
-          }}
-          onDeny={() => {
-            setPendingBashCommand(null);
-            setActiveDialog(null);
-          }}
-          onAlwaysApprove={() => {
-            const setup = fileSystem.loadSetup();
-            setup.approvedCommands.push(pendingBashCommand);
-            fileSystem.saveSetup(setup);
-            setPendingBashCommand(null);
-            setActiveDialog(null);
-          }}
-          onAlwaysDeny={() => {
-            const setup = fileSystem.loadSetup();
-            setup.deniedCommands.push(pendingBashCommand);
-            fileSystem.saveSetup(setup);
-            setPendingBashCommand(null);
-            setActiveDialog(null);
-          }}
-        />
+        <Box position="absolute" width="100%" height={Math.max(terminalHeight || 24, 20)} justifyContent="flex-end" flexDirection="column">
+          <BashApprovalPrompt
+            command={pendingBashCommand}
+            onApprove={() => {
+              setPendingBashCommand(null);
+              setActiveDialog(null);
+            }}
+            onDeny={() => {
+              setPendingBashCommand(null);
+              setActiveDialog(null);
+            }}
+            onAlwaysApprove={() => {
+              const setup = fileSystem.loadSetup();
+              setup.approvedCommands.push(pendingBashCommand);
+              fileSystem.saveSetup(setup);
+              setPendingBashCommand(null);
+              setActiveDialog(null);
+            }}
+            onAlwaysDeny={() => {
+              const setup = fileSystem.loadSetup();
+              setup.deniedCommands.push(pendingBashCommand);
+              fileSystem.saveSetup(setup);
+              setPendingBashCommand(null);
+              setActiveDialog(null);
+            }}
+          />
+        </Box>
       )}
 
-      {/* File Approval Dialog */}
+      {/* File Approval - Fixed to bottom */}
       {activeDialog === 'file-approval' && pendingFileOperation && (
-        <FileApprovalPrompt
-          operation={pendingFileOperation.operation}
-          filePath={pendingFileOperation.filePath}
-          details={pendingFileOperation.details}
-        />
+        <Box position="absolute" width="100%" height={Math.max(terminalHeight || 24, 20)} justifyContent="flex-end" flexDirection="column">
+          <FileApprovalPrompt
+            operation={pendingFileOperation.operation}
+            filePath={pendingFileOperation.filePath}
+            details={pendingFileOperation.details}
+          />
+        </Box>
       )}
 
-      {/* 🔥 Mode Selector Dialog */}
+      {/*  Mode Selector Dialog */}
       {activeDialog === 'mode-selector' && (
         <ModeSelector
           currentMode={conversationMode}
@@ -1110,7 +1181,7 @@ When the user asks you to work with files or code, you can help them directly.`;
               ...messages,
               {
                 role: 'system' as const,
-                content: `🎭 Conversation mode: ${mode}`,
+                content: ` Conversation mode: ${mode}`,
                 timestamp: new Date().toISOString(),
               },
             ]);
@@ -1188,7 +1259,7 @@ When the user asks you to work with files or code, you can help them directly.`;
           </Box>
           <Box marginTop={1}>
             <Text color="orange" dimColor>
-              Press Enter to save | Esc to cancel
+               Enter = save | Esc = cancel
             </Text>
           </Box>
         </Box>
@@ -1205,7 +1276,7 @@ When the user asks you to work with files or code, you can help them directly.`;
       {isProcessing && (
         <Box marginBottom={1}>
           <Text color="orange">
-            🤖 {selectedModels.map(id => AVAILABLE_MODELS[id]?.name || id).join(', ')} is diddle doodling....
+             {selectedModels.map(id => AVAILABLE_MODELS[id]?.name || id).join(', ')} is NickNackPattyWackin...
           </Text>
         </Box>
       )}
@@ -1216,7 +1287,7 @@ When the user asks you to work with files or code, you can help them directly.`;
           value={inputValue}
           onChange={handleInputChange}
           onSubmit={handleInputSubmit}
-          placeholder="Type your message... (Enter to send, \+Enter for new line)"
+          placeholder="Type your message...)"
           disabled={false}
         />
       )}
@@ -1231,7 +1302,7 @@ When the user asks you to work with files or code, you can help them directly.`;
         </Text>
       </Box>
 
-      {/* Status Bar - MOVED TO BOTTOM! 🔥 */}
+      {/* Status Bar - MOVED TO BOTTOM! */}
       <Box marginTop={1}>
         <StatusBar
           models={modelNames}

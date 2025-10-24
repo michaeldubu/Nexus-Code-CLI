@@ -9,6 +9,7 @@ import React from 'react';
 import { render } from 'ink';
 import { NexusFileSystem } from '../core/filesystem/nexus-fs.js';
 import { FileTools } from '../core/tools/file-tools.js';
+import { MemoryTool } from '../core/tools/memory-tool.js';
 import { UnifiedModelManager } from '../core/models/unified-model-manager.js';
 import { NexusTUI } from './components/NexusTUI.js';
 import { MCPServer } from '../core/mcp/client.js';
@@ -43,6 +44,9 @@ async function main() {
     deniedPaths: setup.permissions?.deniedPaths || [],
   });
 
+  // Initialize memory tool
+  const memoryTool = new MemoryTool(process.cwd());
+
   // Initialize model manager with all available APIs
   const modelManager = new UnifiedModelManager(
     anthropicKey,
@@ -53,12 +57,62 @@ async function main() {
   // Set default model (Sonnet 4.5)
   modelManager.setModel('claude-sonnet-4-5-20250929');
 
-  // Initialize MCP Server and register file tools
+  // Initialize MCP Server and register file tools + memory
   const mcpServer = new MCPServer();
   registerFileTools(mcpServer, fileTools);
 
+  // Register memory tool
+  mcpServer.registerTool({
+    name: 'memory',
+    description: 'Store and retrieve information across sessions in memory files',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        command: { type: 'string', enum: ['view', 'create', 'str_replace', 'insert', 'delete', 'rename'] },
+        path: { type: 'string' },
+        file_text: { type: 'string' },
+        old_str: { type: 'string' },
+        new_str: { type: 'string' },
+        insert_line: { type: 'number' },
+        insert_text: { type: 'string' },
+        old_path: { type: 'string' },
+        new_path: { type: 'string' },
+        view_range: { type: 'array', items: { type: 'number' } },
+      },
+      required: ['command'],
+    },
+  }, async (input) => {
+    const result = await memoryTool.execute(input.command, input);
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+    return result.output || 'Success';
+  });
+
   // Get tool definitions for passing to AI models
-  const toolDefinitions = getFileToolsDefinitions();
+  const toolDefinitions = [
+    ...getFileToolsDefinitions(),
+    {
+      name: 'memory',
+      description: 'Store and retrieve information across sessions in /memories directory',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          command: { type: 'string', enum: ['view', 'create', 'str_replace', 'insert', 'delete', 'rename'] },
+          path: { type: 'string' },
+          file_text: { type: 'string' },
+          old_str: { type: 'string' },
+          new_str: { type: 'string' },
+          insert_line: { type: 'number' },
+          insert_text: { type: 'string' },
+          old_path: { type: 'string' },
+          new_path: { type: 'string' },
+          view_range: { type: 'array', items: { type: 'number' } },
+        },
+        required: ['command'],
+      },
+    },
+  ];
 
   // Handle Ctrl+C - require DOUBLE press to exit! 🔥
   let ctrlCCount = 0;
@@ -88,6 +142,7 @@ async function main() {
       modelManager,
       fileSystem,
       fileTools,
+      memoryTool,
       mcpServer,
       toolDefinitions,
     }),

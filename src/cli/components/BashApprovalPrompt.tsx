@@ -15,16 +15,16 @@ interface Props {
 
 export const BashApprovalPrompt: React.FC<Props> = ({ command }) => {
   return (
-    <Box flexDirection="column" padding={1} borderStyle="round" borderColor="yellow">
+    <Box flexDirection="column" padding={1} borderStyle="round" borderColor="orange">
       <Box>
-        <Text color="yellow" bold>
+        <Text color="orange" bold>
           ⚠️  Bash Command Approval Required
         </Text>
       </Box>
 
       <Box marginTop={1}>
-        <Text color="white">Command: </Text>
-        <Text color="cyan" bold>
+        <Text color="green">Command: </Text>
+        <Text color="orange" bold>
           {command}
         </Text>
       </Box>

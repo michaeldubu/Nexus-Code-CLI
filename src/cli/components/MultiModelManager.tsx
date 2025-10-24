@@ -94,7 +94,7 @@ export function buildEnhancedSystemPrompt(
 
 /**
  * Stream message to multiple models based on conversation mode
- * Yields chunks as they come in for live updates! 🔥
+ * Yields chunks as they come in for live updates!
  */
 export async function* streamMultiModelMessage(
   modelManager: UnifiedModelManager,
@@ -436,6 +436,9 @@ export const QUICK_SWITCHES: Record<string, string> = {
   '/o3-pro': 'o3-pro',
   '/o3-mini': 'o3-mini',
   '/o4-mini': 'o4-mini',
+  '/o4-mini-deep-research': 'o4-mini-deep-research',
+  '/Image': 'gpt-image-1', // TODO integrate properly
+  '/embed': 'text-embedding-3-large', // TODO needs integrated
   '/gemini': 'gemini-2-0-flash-thinking-exp-01-21',
 };
 

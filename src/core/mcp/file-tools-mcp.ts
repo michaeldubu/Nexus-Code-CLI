@@ -5,6 +5,7 @@
 
 import { MCPServer } from './client.js';
 import { FileTools } from '../tools/file-tools.js';
+import { MemoryTool } from '../tools/memory-tool.js';
 import { MCPTool } from '../types/index.js';
 
 /**
