@@ -56,3 +56,5 @@ temp/
 src/bulkreplace.py
 /.gitignoredir
 /.claude
+ORIGINAL_NEXUS_VISION.md
+/claudes-docs

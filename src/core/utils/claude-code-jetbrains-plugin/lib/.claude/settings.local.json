@@ -11,7 +11,11 @@
       "Read(//home/michael/Documents/GitHub/Nexus-Code-CLI/**)",
       "Read(//tmp/decompiled/com/anthropic/code/plugin/mcp/tools/**)",
       "Read(//tmp/**)",
-      "Bash(./gradlew build:*)"
+      "Bash(./gradlew build:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(find:*)",
+      "Bash(./gradlew clean:*)"
     ],
     "deny": [],
     "ask": []
