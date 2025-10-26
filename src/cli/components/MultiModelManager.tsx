@@ -411,35 +411,33 @@ export const AgentSelector: React.FC<AgentSelectorProps> = ({
  * Quick model switch helper
  */
 export const QUICK_SWITCHES: Record<string, string> = {
-  '/sonnet4.5': 'claude-sonnet-4-5-20250929',
-  '/sonnet4-5': 'claude-sonnet-4-5-20250929',
-  '/sonnet4': 'claude-sonnet-4-20250514',
-  '/opus4': 'claude-opus-4-20250514',
-  '/opus4.1': 'claude-opus-4-1-20250805',
-  '/haiku4.5': 'claude-haiku-4-5-20241022',
-  '/haiku4-5': 'claude-haiku-4-5-20241022',
-  '/haiku': 'claude-haiku-4-5-20241022',
-  '/sonnet3.7': 'claude-3-7-sonnet-20250219',
-  '/gpt5': 'gpt-5',
-  '/gpt5-mini': 'gpt-5-mini',
-  '/gpt5-nano': 'gpt-5-nano',
-  '/gpt5-codex': 'gpt-5-codex',
+  // Claude (one shortcut per model)
+  '/s': 'claude-sonnet-4-5-20250929',
+  '/s4': 'claude-sonnet-4-20250514',
+  '/o': 'claude-opus-4-1-20250805',
+  '/h': 'claude-haiku-4-5-20251001',
+
+  // OpenAI (all different models)
+  '/g5': 'gpt-5',
+  '/g5m': 'gpt-5-mini',
+  '/g5n': 'gpt-5-nano',
+  '/g5c': 'gpt-5-codex',
   '/codex': 'codex-mini-latest',
-  '/gpt4.1': 'gpt-4.1',
-  '/gpt4.1-mini': 'gpt-4.1-mini',
-  '/gpt4o': 'gpt-4o',
-  '/gpt4o-search': 'gpt-4o-search-preview',
-  '/gpt4o-mini': 'gpt-4o-mini',
-  '/o3': 'o3',
+  '/g4': 'gpt-4.1',
+  '/g4m': 'gpt-4.1-mini',
+  '/g4o': 'gpt-4o',
+  '/g4os': 'gpt-4o-search-preview',
+  '/g4om': 'gpt-4o-mini',
   '/o1': 'o1',
-  '/o1-pro': 'o1-pro',
-  '/o3-pro': 'o3-pro',
-  '/o3-mini': 'o3-mini',
-  '/o4-mini': 'o4-mini',
-  '/o4-mini-deep-research': 'o4-mini-deep-research',
-  '/Image': 'gpt-image-1', // TODO integrate properly
-  '/embed': 'text-embedding-3-large', // TODO needs integrated
-  '/gemini': 'gemini-2-0-flash-thinking-exp-01-21',
+  '/o1p': 'o1-pro',
+  '/o3': 'o3',
+  '/o3p': 'o3-pro',
+  '/o3m': 'o3-mini',
+  '/o4': 'o4-mini',
+  '/o4dr': 'o4-mini-deep-research',
+
+  // Gemini
+  '/gem': 'gemini-2-0-flash-thinking-exp-01-21',
 };
 
 export function handleQuickSwitch(

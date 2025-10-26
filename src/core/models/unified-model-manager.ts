@@ -25,12 +25,12 @@ export interface ModelConfig {
 
 export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
   // Anthropic Models
-  'claude-opus-4-20250514': {
-    id: 'claude-opus-4-20250514',
-    name: 'Claude Opus 4',
+  'claude-opus-4-1-20250805': {
+    id: 'claude-opus-4-1-20250805',
+    name: 'Claude Opus 4.1',
     provider: 'anthropic',
     supportsThinking: true,
-    maxTokens: 16384,
+    maxTokens: 32000,
     contextWindow: 200000,
   },
   'claude-sonnet-4-20250514': {
@@ -38,31 +38,23 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'Claude Sonnet 4',
     provider: 'anthropic',
     supportsThinking: true,
-    maxTokens: 8192,
-    contextWindow: 200000,
+    maxTokens: 64000,
+    contextWindow: 1000000,
   },
   'claude-sonnet-4-5-20250929': {
     id: 'claude-sonnet-4-5-20250929',
     name: 'Claude Sonnet 4.5',
     provider: 'anthropic',
     supportsThinking: true,
-    maxTokens: 8192,
-    contextWindow: 200000,
-  },
-  'claude-3-7-sonnet-20250219': {
-    id: 'claude-3-7-sonnet-20250219',
-    name: 'Claude Sonnet 3.7',
-    provider: 'anthropic',
-    supportsThinking: false,
-    maxTokens: 8192,
-    contextWindow: 200000,
+    maxTokens: 64000,
+    contextWindow: 1000000,
   },
   'claude-haiku-4-5-20251001': {
     id: 'claude-haiku-4-5-20251001',
     name: 'Claude Haiku 4.5',
     provider: 'anthropic',
     supportsThinking: false,
-    maxTokens: 4096,
+    maxTokens: 64000,
     contextWindow: 200000,
   },
 

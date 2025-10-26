@@ -19,10 +19,6 @@ import { BootSequence, NEXUS_ART } from './BootSequence.js';
 import TextInput from 'ink-text-input';
 //  Multi-Model Extensions
 import {
-  ConversationMode,
-  ModeSelector,
-  AgentSelector,
-  AGENT_ROLES,
   streamMultiModelMessage,
   handleQuickSwitch as quickSwitchHelper,
   QUICK_SWITCHES,
@@ -33,8 +29,8 @@ import { MultiLineInput, ContentBlock as InputContentBlock } from './MultiLineIn
 // Build full command list including quick switches
 const BASE_COMMANDS: Command[] = [
   { name: '/add-dir', description: 'Add a new working directory' },
-  { name: '/agent', description: 'Select AI roles (Coder, Security, Debugger, etc.)' },
   { name: '/bashes', description: 'List and manage background tasks' },
+  { name: '/chaos', description: '🎭 Enable parallel chaos mode (all models respond simultaneously)' },
   { name: '/clear', description: 'Clear conversation history and free up context' },
   { name: '/compact', description: 'Clear conversation history but keep a summary in memory. Optional: /compact <instructions> for summarization' },
   { name: '/config', description: 'Open config panel' },
@@ -45,8 +41,7 @@ const BASE_COMMANDS: Command[] = [
   { name: '/export', description: 'Export conversation to markdown or JSON' },
   { name: '/help', description: 'Show available commands' },
   { name: '/memory', description: 'Show conversation memory usage' },
-  { name: '/mode', description: 'Set conversation mode (single/sequential/parallel)' },
-  { name: '/models', description: 'Select active models (multi-select)' },
+  { name: '/models', description: 'Select active models (multi-select with space)' },
   { name: '/permissions', description: 'Manage command permissions' },
   { name: '/restore-code', description: 'Restore code from history' },
   { name: '/status', description: 'Show current configuration' },
@@ -61,7 +56,7 @@ const QUICK_SWITCH_COMMANDS: Command[] = Object.entries(QUICK_SWITCHES).map(([cm
 
 const COMMANDS: Command[] = [...BASE_COMMANDS, ...QUICK_SWITCH_COMMANDS];
 
-type DialogType = null | 'boot' | 'commands' | 'models' | 'permissions' | 'permissions-input' | 'bash-approval' | 'file-approval' | 'mode-selector' | 'agent-selector';
+type DialogType = null | 'boot' | 'commands' | 'models' | 'permissions' | 'permissions-input' | 'bash-approval' | 'file-approval';
 
 interface Props {
   modelManager: UnifiedModelManager;
@@ -88,11 +83,8 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   const [selectedModels, setSelectedModels] = useState<string[]>([modelManager.getCurrentModel()]);
   const [modelCursorIndex, setModelCursorIndex] = useState(0);
 
-  //  Multi-Model State
-  const [conversationMode, setConversationMode] = useState<ConversationMode>('single');
-  const [activeAgents, setActiveAgents] = useState<string[]>([]);
-  const [modeCursor, setModeCursor] = useState(0);
-  const [agentCursor, setAgentCursor] = useState(0);
+  // Chaos mode easter egg (parallel streaming)
+  const [chaosMode, setChaosMode] = useState(false);
 
   // Permissions state
   const [approvedCommands, setApprovedCommands] = useState<string[]>([]);
@@ -385,75 +377,6 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       return;
     }
 
-    //  Mode selector dialog
-    if (activeDialog === 'mode-selector') {
-      const modes: ConversationMode[] = ['single', 'round-robin', 'sequential', 'parallel'];
-
-      if (key.upArrow) {
-        setModeCursor(prev => Math.max(0, prev - 1));
-      } else if (key.downArrow) {
-        setModeCursor(prev => Math.min(modes.length - 1, prev + 1));
-      } else if (input === ' ') {
-        setConversationMode(modes[modeCursor]);
-        setMessages([
-          ...messages,
-          {
-            role: 'system' as const,
-            content: `🎭 Conversation mode: ${modes[modeCursor]}`,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
-        setActiveDialog(null);
-      }
-      return;
-    }
-//cc
-    //  Agent selector dialog
-    if (activeDialog === 'agent-selector') {
-      const agentKeys = Object.keys(AGENT_ROLES);
-
-      if (key.upArrow) {
-        setAgentCursor(prev => Math.max(0, prev - 1));
-      } else if (key.downArrow) {
-        setAgentCursor(prev => Math.min(agentKeys.length - 1, prev + 1));
-      } else if (input === ' ') {
-        // Toggle agent with SPACE only
-        const agentId = agentKeys[agentCursor];
-        setActiveAgents(prev => {
-          if (prev.includes(agentId)) {
-            return prev.filter(id => id !== agentId);
-          } else {
-            return [...prev, agentId];
-          }
-        });
-      } else if (key.return) {
-        // Enter = confirm and close (same as 'c')
-        const agentNames = activeAgents.map(id => AGENT_ROLES[id].name);
-        setMessages([
-          ...messages,
-          {
-            role: 'system' as const,
-            content: ` Active agents: ${agentNames.length > 0 ? agentNames.join(', ') : 'None'}`,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
-        setActiveDialog(null);
-      } else if (input === 'c') {
-        // Confirm and close
-        const agentNames = activeAgents.map(id => AGENT_ROLES[id].name);
-        setMessages([
-          ...messages,
-          {
-            role: 'system' as const,
-            content: `🤖 Active agents: ${agentNames.length > 0 ? agentNames.join(', ') : 'None'}`,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
-        setActiveDialog(null);
-      }
-      return;
-    }
-
     // Tab key for thinking/reasoning toggle
     if (key.tab && !activeDialog) {
       const config = modelManager.getModelConfig();
@@ -514,16 +437,16 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
         setActiveDialog('models');
         break;
 
-      case '/mode':
-        setActiveDialog('mode-selector');
-        setModeCursor(0);
-        break;
-//cc
-      case '/agent':
-      case '/agents':
-      case '/role':
-        setActiveDialog('agent-selector');
-        setAgentCursor(0);
+      case '/chaos':
+        setChaosMode(!chaosMode);
+        setMessages([
+          ...messages,
+          {
+            role: 'system' as const,
+            content: chaosMode ? '🎭 Chaos mode disabled. Back to sequential.' : '🎭 CHAOS MODE ENABLED! All models will respond in parallel! 🔥',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
         break;
 
       case '/permissions':
@@ -532,12 +455,12 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
 
       case '/stats':
         const modelNames = selectedModels.map(id => AVAILABLE_MODELS[id]?.name || id);
-        const agentNames = activeAgents.map(id => AGENT_ROLES[id].name);
+        const modeDesc = chaosMode ? '🎭 CHAOS (parallel)' : selectedModels.length > 1 ? 'Sequential' : 'Single';
         setMessages([
           ...messages,
           {
             role: 'system' as const,
-            content: `📊 Status:\n  Models: ${modelNames.join(', ')}\n  Mode: ${conversationMode}\n  Agents: ${agentNames.length > 0 ? agentNames.join(', ') : 'None'}\n  Messages: ${messages.length}`,
+            content: `📊 Status:\n  Models: ${modelNames.join(', ')}\n  Mode: ${modeDesc}\n  Messages: ${messages.length}`,
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -832,13 +755,16 @@ Now help the user build some cool shit.`;
         if (abortStreamRef.current) break;
 
         // Stream response from AI
+        // Auto-detect mode: chaos = parallel, multiple models = sequential, single model = single
+        const detectedMode = chaosMode ? 'parallel' : (selectedModels.length > 1 ? 'round-robin' : 'single');
+
         for await (const event of streamMultiModelMessage(
           modelManager,
           selectedModels,
           conversationHistory,
           systemPrompt,
-          conversationMode,
-          activeAgents,
+          detectedMode,
+          [], // No agent overlays for now (will add per-participant prompts later)
           toolDefinitions
         )) {
           if (event.type === 'start') {
@@ -1063,23 +989,10 @@ Now help the user build some cool shit.`;
         </Text>
       </Box>
 
-      {/* Mode and Agent Status */}
-      {(conversationMode !== 'single' || activeAgents.length > 0) && (
-        <Box marginTop={1} marginBottom={1}>
-          {conversationMode !== 'single' && (
-            <Box marginRight={2}>
-              <Text color="gray">Mode: </Text>
-              <Text color="green" bold>{conversationMode}</Text>
-            </Box>
-          )}
-          {activeAgents.length > 0 && (
-            <Box>
-              <Text color="orange">Agents: </Text>
-              <Text color="orange" bold>
-                {activeAgents.map(id => AGENT_ROLES[id].emoji).join(' ')}
-              </Text>
-            </Box>
-          )}
+      {/* Status: Show chaos mode if enabled */}
+      {chaosMode && (
+        <Box marginTop={1} marginBottom={1} justifyContent="center">
+          <Text color="magenta" bold>🎭 CHAOS MODE ACTIVE 🔥</Text>
         </Box>
       )}
 
@@ -1170,44 +1083,7 @@ Now help the user build some cool shit.`;
         </Box>
       )}
 
-      {/*  Mode Selector Dialog */}
-      {activeDialog === 'mode-selector' && (
-        <ModeSelector
-          currentMode={conversationMode}
-          cursorIndex={modeCursor}
-          onSelect={(mode) => {
-            setConversationMode(mode);
-            setMessages([
-              ...messages,
-              {
-                role: 'system' as const,
-                content: ` Conversation mode: ${mode}`,
-                timestamp: new Date().toISOString(),
-              },
-            ]);
-            setActiveDialog(null);
-          }}
-          onCancel={() => setActiveDialog(null)}
-        />
-      )}
-
-      {/*  Agent Selector Dialog */}
-      {activeDialog === 'agent-selector' && (
-        <AgentSelector
-          activeAgents={activeAgents}
-          cursorIndex={agentCursor}
-          onToggle={(agentId) => {
-            setActiveAgents(prev => {
-              if (prev.includes(agentId)) {
-                return prev.filter(id => id !== agentId);
-              } else {
-                return [...prev, agentId];
-              }
-            });
-          }}
-          onCancel={() => setActiveDialog(null)}
-        />
-      )}
+      {/* Mode and Agent selectors removed - using simplified participants model */}
 
       {/* Permissions Input Dialog */}
       {activeDialog === 'permissions-input' && (
