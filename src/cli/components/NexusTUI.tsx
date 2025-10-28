@@ -62,6 +62,16 @@ const COMMANDS: Command[] = [...BASE_COMMANDS, ...QUICK_SWITCH_COMMANDS];
 
 type DialogType = null | 'boot' | 'commands' | 'models' | 'permissions' | 'permissions-input' | 'bash-approval' | 'file-approval';
 
+// Editing modes
+type EditingMode = 'normal' | 'plan' | 'autoedit' | 'yolo';
+
+const MODE_DESCRIPTIONS: Record<EditingMode, string> = {
+  normal: 'Normal - ask for all approvals',
+  plan: 'Plan - read-only, no edits/bash',
+  autoedit: 'Auto-edit - auto file ops, ask bash',
+  yolo: 'YOLO - auto-approve EVERYTHING 💀',
+};
+
 interface Props {
   modelManager: UnifiedModelManager;
   fileSystem: NexusFileSystem;
@@ -93,6 +103,10 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   // Permissions state
   const [approvedCommands, setApprovedCommands] = useState<string[]>([]);
   const [deniedCommands, setDeniedCommands] = useState<string[]>([]);
+
+  // Session-only permissions (cleared on exit)
+  const [sessionApprovedCommands, setSessionApprovedCommands] = useState<string[]>([]);
+  const [sessionDeniedCommands, setSessionDeniedCommands] = useState<string[]>([]);
   const [permissionsTab, setPermissionsTab] = useState<'allow' | 'ask' | 'deny' | 'workspace'>('allow');
   const [permissionsIndex, setPermissionsIndex] = useState(0);
 
@@ -121,6 +135,9 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   const [isProcessing, setIsProcessing] = useState(false);
   const abortStreamRef = useRef(false);
 
+  // Editing mode state
+  const [editingMode, setEditingMode] = useState<EditingMode>('normal');
+
   // Load initial data and setup bash approval callback
   useEffect(() => {
     const setup = fileSystem.loadSetup();
@@ -129,6 +146,25 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
 
     // Setup bash approval callback
     fileTools.setBashApprovalCallback(async (command: string) => {
+      // YOLO mode: auto-approve everything
+      if (editingMode === 'yolo') {
+        return true;
+      }
+
+      // Plan mode: deny all bash commands
+      if (editingMode === 'plan') {
+        return false;
+      }
+
+      // Check session approvals/denials
+      if (sessionApprovedCommands.some(pattern => command.startsWith(pattern))) {
+        return true;
+      }
+      if (sessionDeniedCommands.some(pattern => command.startsWith(pattern))) {
+        return false;
+      }
+
+      // Normal/autoedit mode: ask user
       return new Promise((resolve) => {
         setPendingBashCommand(command);
         setBashApprovalResolver(() => resolve);
@@ -138,13 +174,29 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
 
     // Setup file approval callback for write/edit operations
     fileTools.setFileApprovalCallback(async (operation: string, filePath: string, details?: string) => {
+      // YOLO mode: auto-approve everything
+      if (editingMode === 'yolo') {
+        return true;
+      }
+
+      // Autoedit mode: auto-approve file operations
+      if (editingMode === 'autoedit') {
+        return true;
+      }
+
+      // Plan mode: deny all file write/edit operations
+      if (editingMode === 'plan') {
+        return false;
+      }
+
+      // Normal mode: ask user
       return new Promise((resolve) => {
         setPendingFileOperation({ operation, filePath, details });
         setFileApprovalResolver(() => resolve);
         setActiveDialog('file-approval');
       });
     });
-  }, []);
+  }, [editingMode, sessionApprovedCommands, sessionDeniedCommands]);
 
   // Input handling for dialogs
   useInput((input, key) => {
@@ -293,36 +345,50 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
 
     // Bash approval dialog
     if (activeDialog === 'bash-approval') {
-      if (input === 'y' && pendingBashCommand && bashApprovalResolver) {
-        // Approve once
+      if (input === '1' && pendingBashCommand && bashApprovalResolver) {
+        // 1 - Approve once
         bashApprovalResolver(true);
         setPendingBashCommand(null);
         setBashApprovalResolver(null);
         setActiveDialog(null);
-      } else if (input === 'a' && pendingBashCommand && bashApprovalResolver) {
-        // Always approve
+      } else if (input === '2' && pendingBashCommand && bashApprovalResolver) {
+        // 2 - Approve for session
+        setSessionApprovedCommands(prev => [...prev, pendingBashCommand]);
+        bashApprovalResolver(true);
+        setPendingBashCommand(null);
+        setBashApprovalResolver(null);
+        setActiveDialog(null);
+      } else if (input === '3' && pendingBashCommand && bashApprovalResolver) {
+        // 3 - Always approve (permanent)
         const setup = fileSystem.loadSetup();
         setup.approvedCommands.push(pendingBashCommand);
         fileSystem.saveSetup(setup);
         setApprovedCommands(setup.approvedCommands);
-        fileTools.setApprovedCommands(setup.approvedCommands); // Update file tools
+        fileTools.setApprovedCommands(setup.approvedCommands);
         bashApprovalResolver(true);
         setPendingBashCommand(null);
         setBashApprovalResolver(null);
         setActiveDialog(null);
-      } else if (input === 'n' && pendingBashCommand && bashApprovalResolver) {
-        // Deny once
+      } else if (input === '4' && pendingBashCommand && bashApprovalResolver) {
+        // 4 - Deny once
         bashApprovalResolver(false);
         setPendingBashCommand(null);
         setBashApprovalResolver(null);
         setActiveDialog(null);
-      } else if (input === 'd' && pendingBashCommand && bashApprovalResolver) {
-        // Always deny
+      } else if (input === '5' && pendingBashCommand && bashApprovalResolver) {
+        // 5 - Deny for session
+        setSessionDeniedCommands(prev => [...prev, pendingBashCommand]);
+        bashApprovalResolver(false);
+        setPendingBashCommand(null);
+        setBashApprovalResolver(null);
+        setActiveDialog(null);
+      } else if (input === '6' && pendingBashCommand && bashApprovalResolver) {
+        // 6 - Always deny (permanent)
         const setup = fileSystem.loadSetup();
         setup.deniedCommands.push(pendingBashCommand);
         fileSystem.saveSetup(setup);
         setDeniedCommands(setup.deniedCommands);
-        fileTools.setDeniedCommands(setup.deniedCommands); // Update file tools
+        fileTools.setDeniedCommands(setup.deniedCommands);
         bashApprovalResolver(false);
         setPendingBashCommand(null);
         setBashApprovalResolver(null);
@@ -378,6 +444,16 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
         setFileApprovalResolver(null);
         setActiveDialog(null);
       }
+      return;
+    }
+
+    // Shift+Tab for mode switching (silent - only updates status bar)
+    if (key.shift && key.tab && !activeDialog) {
+      const modes: EditingMode[] = ['normal', 'plan', 'autoedit', 'yolo'];
+      const currentIndex = modes.indexOf(editingMode);
+      const nextMode = modes[(currentIndex + 1) % modes.length];
+      setEditingMode(nextMode);
+      // Don't add system message - mode shown in status bar only
       return;
     }
 
@@ -750,9 +826,9 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
     setActiveDialog(null); // Close any open dialogs
     setIsProcessing(true);
 
-    // Declare completedMessages and streamingMessages outside try so catch can access them
-    const completedMessages: Array<Message & { model: string; agent?: string; timestamp: string }> = [];
+    // Declare these outside try so catch can access them
     let currentStreamingMessages: Map<string, { content: string; thinking: string; modelName: string; agent?: string }> = new Map();
+    const completedMessages: Array<Message & { model: string; agent?: string; timestamp: string }> = [];
 
     try {
       //  Build system prompt with file tools info
@@ -1133,12 +1209,6 @@ Now help the user build some cool shit.`;
         </Box>
       )}
 
-      <Box marginTop={1} marginBottom={1}>
-        <Text color="orange" dimColor>
-          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        </Text>
-      </Box>
-
       {/* Dialogs */}
       {activeDialog === 'commands' && (
         <CommandAutocomplete
@@ -1281,6 +1351,7 @@ Now help the user build some cool shit.`;
           messageCount={messages.filter((m) => m.role !== 'system').length}
           thinkingEnabled={config.supportsThinking ? modelManager.isThinkingEnabled() : undefined}
           reasoningLevel={config.supportsReasoning ? modelManager.getReasoningEffort() : undefined}
+          mode={editingMode}
         />
       </Box>
 

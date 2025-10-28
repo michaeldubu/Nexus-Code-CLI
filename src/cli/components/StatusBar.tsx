@@ -11,6 +11,7 @@ interface Props {
   messageCount: number;
   thinkingEnabled?: boolean;
   reasoningLevel?: string;
+  mode?: string; // Editing mode: normal, plan, autoedit, yolo
 }
 
 export const StatusBar: React.FC<Props> = ({
@@ -19,6 +20,7 @@ export const StatusBar: React.FC<Props> = ({
   messageCount,
   thinkingEnabled,
   reasoningLevel,
+  mode,
 }) => {
   // Truncate working directory if too long
   const truncatedDir = workingDir.length > 30 ? '...' + workingDir.slice(-27) : workingDir;
@@ -59,7 +61,20 @@ export const StatusBar: React.FC<Props> = ({
         </>
       )}
 
-      <Text color="gray" dimColor> │ Tab=toggle</Text>
+      {/* Mode */}
+      {mode && (
+        <>
+          <Text color="green"> │ Mode: </Text>
+          <Text
+            color={mode === 'yolo' ? 'red' : mode === 'plan' ? 'cyan' : mode === 'autoedit' ? 'yellow' : 'white'}
+            bold={mode !== 'normal'}
+          >
+            {mode.toUpperCase()}
+          </Text>
+        </>
+      )}
+
+      <Text color="gray" dimColor> │ Tab=toggle | Shift+Tab=mode</Text>
     </Box>
   );
 };

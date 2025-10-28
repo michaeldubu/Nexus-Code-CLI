@@ -335,6 +335,7 @@ export class UnifiedModelManager {
   private anthropic?: Anthropic; // Standard client (5 min timeout)
   private anthropicStreaming?: Anthropic; // Streaming client (10 min timeout)
   private anthropicComputerUse?: Anthropic; // Computer use client (15 min timeout)
+  private anthropicKey?: string; // Store key for recreating clients with beta headers
   private openai?: OpenAI;
   private google?: GoogleGenerativeAI;
   private currentModel: string;
@@ -433,14 +434,50 @@ export class UnifiedModelManager {
   }
 
   /**
-   * Set current model
+   * Set current model and auto-adjust capabilities
    */
   setModel(modelId: string): void {
     if (!AVAILABLE_MODELS[modelId]) {
       throw new Error(`Unknown model: ${modelId}`);
     }
+
+    const newConfig = AVAILABLE_MODELS[modelId];
+    const oldConfig = AVAILABLE_MODELS[this.currentModel];
+
     this.currentModel = modelId;
     this.lastResponseId = undefined; // Reset conversation chain
+
+    // Auto-disable incompatible features when switching models
+    if (oldConfig && newConfig) {
+      // Disable thinking if new model doesn't support it
+      if (!newConfig.supportsThinking && this.thinkingEnabled) {
+        console.log('⚠️  Auto-disabling thinking (not supported by new model)');
+        this.thinkingEnabled = false;
+      }
+
+      // Disable interleaved thinking if new model doesn't support it
+      if (!newConfig.supportsInterleavedThinking && this.interleavedThinkingEnabled) {
+        console.log('⚠️  Auto-disabling interleaved thinking (not supported by new model)');
+        this.interleavedThinkingEnabled = false;
+      }
+
+      // Disable reasoning if new model doesn't support it
+      if (!newConfig.supportsReasoning && oldConfig.supportsReasoning) {
+        console.log('⚠️  Auto-disabling reasoning (not supported by new model)');
+        // Don't reset reasoningEffort, just don't use it
+      }
+
+      // Disable computer use if new model doesn't support it
+      if (!newConfig.supportsComputerUse && this.computerUseEnabled) {
+        console.log('⚠️  Auto-disabling computer use (not supported by new model)');
+        this.computerUseEnabled = false;
+      }
+
+      // Auto-enable thinking for new Claude models if it was on for old model
+      if (newConfig.supportsThinking && !this.thinkingEnabled && oldConfig.supportsThinking) {
+        this.thinkingEnabled = true;
+      }
+    }
   }
 
   /**
@@ -537,18 +574,26 @@ export class UnifiedModelManager {
 
   /**
    * Toggle reasoning effort (for OpenAI reasoning models)
+   * Now includes 'off' option to disable reasoning
    */
-  toggleReasoning(): 'minimal' | 'low' | 'medium' | 'high' {
+  toggleReasoning(): 'off' | 'minimal' | 'low' | 'medium' | 'high' {
+    // Check if model supports reasoning
+    if (!this.getModelConfig().supportsReasoning) {
+      console.warn('⚠️ Current model does not support reasoning.');
+      return 'off';
+    }
+
     // GPT-5 Pro only supports 'high' reasoning - don't allow toggling
     if (this.currentModel === 'gpt-5-pro') {
       console.warn('⚠️ GPT-5 Pro only supports high reasoning effort. Cannot toggle.');
       return 'high';
     }
 
-    const levels: Array<'minimal' | 'low' | 'medium' | 'high'> = ['minimal', 'low', 'medium', 'high'];
-    const currentIndex = levels.indexOf(this.reasoningEffort);
-    this.reasoningEffort = levels[(currentIndex + 1) % levels.length];
-    return this.reasoningEffort;
+    const levels: Array<'off' | 'minimal' | 'low' | 'medium' | 'high'> = ['off', 'minimal', 'low', 'medium', 'high'];
+    const currentIndex = levels.indexOf(this.reasoningEffort as any);
+    const nextLevel = levels[(currentIndex + 1) % levels.length];
+    this.reasoningEffort = nextLevel === 'off' ? 'low' : nextLevel; // Store actual level
+    return nextLevel;
   }
 
   /**
@@ -669,11 +714,6 @@ export class UnifiedModelManager {
       betaFeatures.push('files-api-2025-04-14');
     }
 
-    const extraHeaders: Record<string, string> = {};
-    if (betaFeatures.length > 0) {
-      extraHeaders['anthropic-beta'] = betaFeatures.join(',');
-    }
-
     // Enable prompt caching if enabled
     let finalSystem: any = systemPromptText;
     let finalMessages = formattedMessages;
@@ -692,7 +732,8 @@ export class UnifiedModelManager {
     // Use appropriate client based on operation type
     const client = this.getAnthropicClient();
 
-    const response = await client.messages.create({
+    // Build request options (first parameter)
+    const requestOptions: any = {
       model: this.currentModel,
       max_tokens: options.maxTokens || this.getModelConfig().maxTokens,
       temperature: 1.0,
@@ -704,8 +745,16 @@ export class UnifiedModelManager {
           budget_tokens: 200000,
         },
       }),
-      ...(Object.keys(extraHeaders).length > 0 && { extra_headers: extraHeaders }),
-    } as any);
+    };
+
+    // Build headers options (second parameter)
+    const headersOptions: any = betaFeatures.length > 0 ? {
+      headers: {
+        'anthropic-beta': betaFeatures.join(','),
+      }
+    } : undefined;
+
+    const response = await client.messages.create(requestOptions, headersOptions);
 
     const textContent = response.content.find(c => c.type === 'text');
     const thinkingContent = response.content.find((c: any) => c.type === 'thinking');
@@ -913,15 +962,11 @@ export class UnifiedModelManager {
       betaFeatures.push('files-api-2025-04-14');
     }
 
-    const extraHeaders: Record<string, string> = {};
-    if (betaFeatures.length > 0) {
-      extraHeaders['anthropic-beta'] = betaFeatures.join(',');
-    }
-
     // Use streaming client (10 min timeout)
     const client = this.getAnthropicStreamingClient();
 
-    const stream = await client.messages.stream({
+    // Build streaming request options (first parameter)
+    const streamOptions: any = {
       model: this.currentModel,
       max_tokens: options.maxTokens || this.getModelConfig().maxTokens,
       temperature: 1.0,
@@ -935,8 +980,16 @@ export class UnifiedModelManager {
           budget_tokens: 200000,
         },
       }),
-      ...(Object.keys(extraHeaders).length > 0 && { extra_headers: extraHeaders }),
-    } as any);
+    };
+
+    // Build headers options (second parameter)
+    const headersOptions: any = betaFeatures.length > 0 ? {
+      headers: {
+        'anthropic-beta': betaFeatures.join(','),
+      }
+    } : undefined;
+
+    const stream = await client.messages.stream(streamOptions, headersOptions);
 
     // Track tool calls being built up from deltas 🔥
     let currentToolCall: { id: string; name: string; inputStr: string } | null = null;

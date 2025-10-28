@@ -30,15 +30,17 @@ export const BashApprovalPrompt: React.FC<Props> = ({ command }) => {
       </Box>
 
       <Box marginTop={1} flexDirection="column">
-        <Text color="green">y - Approve once</Text>
-        <Text color="green">a - Always approve this command</Text>
-        <Text color="red">n - Deny once</Text>
-        <Text color="red">d - Always deny this command</Text>
+        <Text color="green">1 - Approve once</Text>
+        <Text color="cyan">2 - Approve for this session</Text>
+        <Text color="green" bold>3 - Always approve (saved)</Text>
+        <Text color="red">4 - Deny once</Text>
+        <Text color="magenta">5 - Deny for this session</Text>
+        <Text color="red" bold>6 - Always deny (saved)</Text>
       </Box>
 
       <Box marginTop={1}>
         <Text color="gray" dimColor>
-          Press y/a/n/d to respond
+          Press 1-6 to respond
         </Text>
       </Box>
     </Box>
