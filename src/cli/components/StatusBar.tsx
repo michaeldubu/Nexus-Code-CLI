@@ -20,58 +20,46 @@ export const StatusBar: React.FC<Props> = ({
   thinkingEnabled,
   reasoningLevel,
 }) => {
+  // Truncate working directory if too long
+  const truncatedDir = workingDir.length > 30 ? '...' + workingDir.slice(-27) : workingDir;
+
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor="green" padding={1}>
-      <Box>
-        <Text color="green" bold>
-          {'>'} STATUS REPORT:
-        </Text>
-      </Box>
+    <Box borderStyle="single" borderColor="green" paddingX={1}>
+      {/* Horizontal layout - everything in one line */}
+      <Text color="green" bold>{'>'} </Text>
 
-      <Box marginLeft={2}>
-        <Text color="green">└─ Model(s): </Text>
-        <Text color="greenBright" bold>
-          {models.join(' + ')}
-        </Text>
-      </Box>
+      {/* Model(s) */}
+      <Text color="green">Model: </Text>
+      <Text color="greenBright" bold>{models.join('+')}</Text>
+      <Text color="green"> │ </Text>
 
-      <Box marginLeft={2}>
-        <Text color="green">└─ Working Dir: </Text>
-        <Text color="gray" dimColor>
-          {workingDir}
-        </Text>
-      </Box>
+      {/* Working Directory */}
+      <Text color="green">Dir: </Text>
+      <Text color="gray" dimColor>{truncatedDir}</Text>
+      <Text color="green"> │ </Text>
 
+      {/* Messages */}
+      <Text color="green">Msgs: </Text>
+      <Text color="gray">{messageCount}</Text>
+
+      {/* Thinking/Reasoning */}
       {thinkingEnabled !== undefined && (
-        <Box marginLeft={2}>
-          <Text color="green">└─ Extended Thinking: </Text>
+        <>
+          <Text color="green"> │ Thinking: </Text>
           <Text color={thinkingEnabled ? 'greenBright' : 'gray'} bold={thinkingEnabled}>
             {thinkingEnabled ? 'ON' : 'OFF'}
           </Text>
-          <Text color="gray" dimColor>
-            {' '}
-            (Tab to toggle)
-          </Text>
-        </Box>
+        </>
       )}
 
       {reasoningLevel && (
-        <Box marginLeft={2}>
-          <Text color="green">└─ Reasoning: </Text>
-          <Text color="greenBright" bold>
-            {reasoningLevel.toUpperCase()}
-          </Text>
-          <Text color="gray" dimColor>
-            {' '}
-            (Tab to toggle)
-          </Text>
-        </Box>
+        <>
+          <Text color="green"> │ Reasoning: </Text>
+          <Text color="greenBright" bold>{reasoningLevel.toUpperCase()}</Text>
+        </>
       )}
 
-      <Box marginLeft={2}>
-        <Text color="green">└─ Messages: </Text>
-        <Text color="gray">{messageCount}</Text>
-      </Box>
+      <Text color="gray" dimColor> │ Tab=toggle</Text>
     </Box>
   );
 };

@@ -101,8 +101,7 @@ export const MessageRenderer: React.FC<Props> = ({ messages, currentModel }) => 
               {msg.thinking && (
                 <Box marginLeft={2} marginBottom={1}>
                   <Text color="cyan" dimColor>
-                    💭 Thinking: {msg.thinking.substring(0, 200)}
-                    {msg.thinking.length > 200 ? '...' : ''}
+                    💭 Thinking: {msg.thinking}
                   </Text>
                 </Box>
               )}

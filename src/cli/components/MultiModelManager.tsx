@@ -419,6 +419,7 @@ export const QUICK_SWITCHES: Record<string, string> = {
 
   // OpenAI (all different models)
   '/g5': 'gpt-5',
+  '/g5p': 'gpt-5-pro',
   '/g5m': 'gpt-5-mini',
   '/g5n': 'gpt-5-nano',
   '/g5c': 'gpt-5-codex',

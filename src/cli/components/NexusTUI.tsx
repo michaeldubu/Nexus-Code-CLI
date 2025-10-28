@@ -30,9 +30,11 @@ import { MultiLineInput, ContentBlock as InputContentBlock } from './MultiLineIn
 const BASE_COMMANDS: Command[] = [
   { name: '/add-dir', description: 'Add a new working directory' },
   { name: '/bashes', description: 'List and manage background tasks' },
+  { name: '/caching', description: '💾 Toggle prompt caching (90% cost savings on repeated prompts)' },
   { name: '/chaos', description: '🎭 Enable parallel chaos mode (all models respond simultaneously)' },
   { name: '/clear', description: 'Clear conversation history and free up context' },
   { name: '/compact', description: 'Clear conversation history but keep a summary in memory. Optional: /compact <instructions> for summarization' },
+  { name: '/computer-use', description: '🖥️  Toggle computer use (GUI automation - requires env var)' },
   { name: '/config', description: 'Open config panel' },
   { name: '/context', description: 'Visualize current context usage as a colored grid' },
   { name: '/cost', description: 'Show the total cost and duration of the current session' },
@@ -40,10 +42,12 @@ const BASE_COMMANDS: Command[] = [
   { name: '/exit', description: 'Exit NEXUS' },
   { name: '/export', description: 'Export conversation to markdown or JSON' },
   { name: '/help', description: 'Show available commands' },
+  { name: '/interleaved', description: '🧠 Toggle interleaved thinking (visible reasoning for Sonnet 4+)' },
   { name: '/memory', description: 'Show conversation memory usage' },
   { name: '/models', description: 'Select active models (multi-select with space)' },
   { name: '/permissions', description: 'Manage command permissions' },
   { name: '/restore-code', description: 'Restore code from history' },
+  { name: '/skill', description: '⚡ List and force-use a specific skill' },
   { name: '/status', description: 'Show current configuration' },
   { name: '/verbose', description: 'Toggle verbose mode' },
 ];
@@ -449,6 +453,63 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
         ]);
         break;
 
+      case '/interleaved':
+        const interleavedState = modelManager.toggleInterleavedThinking();
+        setMessages([
+          ...messages,
+          {
+            role: 'system' as const,
+            content: interleavedState
+              ? '🧠 Interleaved thinking ENABLED! You\'ll see Claude\'s reasoning process in real-time.'
+              : '🧠 Interleaved thinking disabled.',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        break;
+
+      case '/computer-use':
+        const computerUseState = modelManager.toggleComputerUse();
+        const envEnabled = process.env.NEXUS_ALLOW_COMPUTER_USE === 'true';
+        setMessages([
+          ...messages,
+          {
+            role: 'system' as const,
+            content: computerUseState
+              ? (envEnabled
+                  ? '🖥️  Computer Use ENABLED! Claude can control mouse, keyboard, and take screenshots. ⚠️  REAL EXECUTION!'
+                  : '🖥️  Computer Use enabled but NEXUS_ALLOW_COMPUTER_USE env var not set. Feature will not execute.')
+              : '🖥️  Computer Use disabled.',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        break;
+
+      case '/caching':
+        const cachingState = modelManager.togglePromptCaching();
+        setMessages([
+          ...messages,
+          {
+            role: 'system' as const,
+            content: cachingState
+              ? '💾 Prompt caching ENABLED! (90% cost savings on repeated prompts)'
+              : '💾 Prompt caching disabled.',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        break;
+
+      case '/skill':
+        // TODO: Add skills selector dialog
+        setMessages([
+          ...messages,
+          {
+            role: 'system' as const,
+            content: '⚡ Skills menu coming soon! For now, models will auto-use skills from .nexus/skills/ when needed.',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        break;
+
       case '/permissions':
         setActiveDialog('permissions');
         break;
@@ -508,15 +569,37 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
         break;
 
       case '/export':
-        const exportData = JSON.stringify(messages, null, 2);
-        setMessages([
-          ...messages,
-          {
-            role: 'system' as const,
-            content: `📁 Export ready! Copy conversation data:\n\n${exportData.substring(0, 200)}...\n\n(Full export would be saved to file)`,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
+        try {
+          const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
+          const exportPath = `${process.env.HOME}/.nexus/exports/conversation-${timestamp}.json`;
+          const exportData = JSON.stringify(messages, null, 2);
+
+          // Ensure exports directory exists
+          const exportsDir = `${process.env.HOME}/.nexus/exports`;
+          if (!require('fs').existsSync(exportsDir)) {
+            require('fs').mkdirSync(exportsDir, { recursive: true });
+          }
+
+          require('fs').writeFileSync(exportPath, exportData, 'utf-8');
+
+          setMessages([
+            ...messages,
+            {
+              role: 'system' as const,
+              content: `✅ Conversation exported successfully!\n📁 Saved to: ${exportPath}\n📊 Messages: ${messages.length}`,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        } catch (error: any) {
+          setMessages([
+            ...messages,
+            {
+              role: 'system' as const,
+              content: `❌ Export failed: ${error.message}`,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
         break;
 
       case '/context':
@@ -667,8 +750,9 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
     setActiveDialog(null); // Close any open dialogs
     setIsProcessing(true);
 
-    // Declare completedMessages outside try so catch can access it
+    // Declare completedMessages and streamingMessages outside try so catch can access them
     const completedMessages: Array<Message & { model: string; agent?: string; timestamp: string }> = [];
+    let currentStreamingMessages: Map<string, { content: string; thinking: string; modelName: string; agent?: string }> = new Map();
 
     try {
       //  Build system prompt with file tools info
@@ -682,6 +766,9 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
 **read_file** - Read a file's contents
   - Use when: User asks about code, you need to see implementation, debugging
   - Example: read_file({ file_path: "src/index.ts" })
+  - ⚠️  LARGE FILES: For files >500 lines, use offset/limit params to read in chunks!
+  - Example: read_file({ file_path: "large.ts", offset: 0, limit: 100 }) // First 100 lines
+  - Example: read_file({ file_path: "large.ts", offset: 500, limit: 100 }) // Lines 500-600
 
 **write_file** - Create or overwrite a file
   - Use when: Creating new files, completely replacing content
@@ -715,7 +802,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
 
 1. **NEVER fake tool outputs** - If you need to see a file, ACTUALLY call read_file. Don't guess or make shit up.
 
-2. **ONE tool at a time** - Call read_file to see the code, THEN call edit_file to fix it. Don't try to edit without reading first.
+2. **Read before editing** - Call read_file to see the code, THEN call edit_file to fix it. You can use multiple tools in parallel or sequence as needed.
 
 3. **NO PLACEHOLDERS** - Never write "// TODO" or "// implement this". Write the actual fucking code.
 
@@ -747,7 +834,7 @@ Now help the user build some cool shit.`;
 
       while (loopCount < MAX_LOOPS && !abortStreamRef.current) {
         loopCount++;
-        const streamingMessages: Map<string, { content: string; thinking: string; modelName: string; agent?: string }> = new Map();
+        currentStreamingMessages.clear(); // Clear from previous loop iteration
         const toolCalls: any[] = [];
         let hasToolCalls = false;
 
@@ -768,7 +855,7 @@ Now help the user build some cool shit.`;
           toolDefinitions
         )) {
           if (event.type === 'start') {
-            streamingMessages.set(event.modelId, {
+            currentStreamingMessages.set(event.modelId, {
               content: '',
               thinking: '',
               modelName: event.modelName,
@@ -786,7 +873,7 @@ Now help the user build some cool shit.`;
             // Check abort flag during streaming - preserve partial messages
             if (abortStreamRef.current) {
               // Convert any streaming messages to completed messages before breaking
-              for (const [modelId, msg] of streamingMessages.entries()) {
+              for (const [modelId, msg] of currentStreamingMessages.entries()) {
                 if (msg.content.trim() || msg.thinking.trim()) {
                   completedMessages.push({
                     role: 'assistant' as const,
@@ -800,7 +887,7 @@ Now help the user build some cool shit.`;
               break;
             }
 
-            const existing = streamingMessages.get(event.modelId);
+            const existing = currentStreamingMessages.get(event.modelId);
             if (existing) {
               if (event.content) {
                 existing.content += event.content;
@@ -812,7 +899,7 @@ Now help the user build some cool shit.`;
               setMessages([
                 ...conversationHistory,
                 ...completedMessages,
-                ...Array.from(streamingMessages.values()).map(msg => ({
+                ...Array.from(currentStreamingMessages.values()).map(msg => ({
                   role: 'assistant' as const,
                   content: msg.content,
                   thinking: msg.thinking || undefined,
@@ -823,7 +910,7 @@ Now help the user build some cool shit.`;
               ]);
             }
           } else if (event.type === 'complete' && event.message) {
-            streamingMessages.delete(event.modelId);
+            currentStreamingMessages.delete(event.modelId);
             completedMessages.push(event.message);
           }
         }
@@ -850,10 +937,32 @@ Now help the user build some cool shit.`;
             const result = await mcpServer.executeTool(toolName, toolArgs);
 
             if (result.success) {
-              // Truncate long outputs for display (but full content goes to model)
-              const displayData = result.data.length > 500
-                ? result.data.substring(0, 500) + '\n... [truncated]'
-                : result.data;
+              // Intelligent truncation based on tool type to prevent UI slowdowns
+              let displayData = result.data;
+              const lines = result.data.split('\n');
+
+              // Glob/grep: Show max 20 lines
+              if (toolName === 'glob' || toolName === 'grep') {
+                if (lines.length > 20) {
+                  displayData = lines.slice(0, 20).join('\n') + `\n... [${lines.length - 20} more lines truncated]`;
+                }
+              }
+              // Read: Show max 100 lines or 2000 chars
+              else if (toolName === 'read') {
+                if (lines.length > 100) {
+                  displayData = lines.slice(0, 100).join('\n') + `\n... [${lines.length - 100} more lines truncated]`;
+                } else if (result.data.length > 2000) {
+                  displayData = result.data.substring(0, 2000) + `\n... [${result.data.length - 2000} more chars truncated]`;
+                }
+              }
+              // Other tools: Max 50 lines or 1000 chars
+              else {
+                if (lines.length > 50) {
+                  displayData = lines.slice(0, 50).join('\n') + `\n... [${lines.length - 50} more lines truncated]`;
+                } else if (result.data.length > 1000) {
+                  displayData = result.data.substring(0, 1000) + `\n... [${result.data.length - 1000} more chars truncated]`;
+                }
+              }
 
               // Show truncated version in UI
               setMessages(prev => [...prev, {
@@ -929,13 +1038,41 @@ Now help the user build some cool shit.`;
         });
       }
     } catch (error: any) {
+      // Preserve any in-progress streaming content
+      for (const [modelId, msg] of currentStreamingMessages.entries()) {
+        if (msg.content.trim() || msg.thinking.trim()) {
+          completedMessages.push({
+            role: 'assistant' as const,
+            content: msg.content,
+            thinking: msg.thinking || undefined,
+            model: msg.modelName,
+            agent: msg.agent,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+
+      // Parse error to make it user-friendly
+      let errorMessage = error.message;
+      if (errorMessage.includes('prompt is too long')) {
+        const match = errorMessage.match(/(\d+)\s+tokens\s+>\s+(\d+)\s+maximum/);
+        if (match) {
+          const [_, used, max] = match;
+          errorMessage = `Context limit exceeded! Used ${used} tokens but max is ${max}.\n\n💡 Tip: Try using line ranges with read_file (e.g., offset: 0, limit: 100) for large files.`;
+        } else {
+          errorMessage = `Context limit exceeded!\n\n💡 Tip: Try using line ranges with read_file for large files, or use grep/glob to find specific sections first.`;
+        }
+      } else if (errorMessage.includes('400') || errorMessage.includes('invalid_request_error')) {
+        errorMessage = `API Error: ${errorMessage}\n\n💡 This usually means the request was too large or malformed.`;
+      }
+
       // Save any completed messages before the error + user message + error message
       const errorMessages = [
         userMessage,
         ...completedMessages,
         {
           role: 'system' as const,
-          content: `❌ Error: ${error.message}`,
+          content: `❌ ${errorMessage}`,
           timestamp: new Date().toISOString(),
         },
       ];
@@ -1041,49 +1178,7 @@ Now help the user build some cool shit.`;
         />
       )}
 
-      {/* Bash Approval - Fixed to bottom */}
-      {activeDialog === 'bash-approval' && pendingBashCommand && (
-        <Box position="absolute" width="100%" height={Math.max(terminalHeight || 24, 20)} justifyContent="flex-end" flexDirection="column">
-          <BashApprovalPrompt
-            command={pendingBashCommand}
-            onApprove={() => {
-              setPendingBashCommand(null);
-              setActiveDialog(null);
-            }}
-            onDeny={() => {
-              setPendingBashCommand(null);
-              setActiveDialog(null);
-            }}
-            onAlwaysApprove={() => {
-              const setup = fileSystem.loadSetup();
-              setup.approvedCommands.push(pendingBashCommand);
-              fileSystem.saveSetup(setup);
-              setPendingBashCommand(null);
-              setActiveDialog(null);
-            }}
-            onAlwaysDeny={() => {
-              const setup = fileSystem.loadSetup();
-              setup.deniedCommands.push(pendingBashCommand);
-              fileSystem.saveSetup(setup);
-              setPendingBashCommand(null);
-              setActiveDialog(null);
-            }}
-          />
-        </Box>
-      )}
-
-      {/* File Approval - Fixed to bottom */}
-      {activeDialog === 'file-approval' && pendingFileOperation && (
-        <Box position="absolute" width="100%" height={Math.max(terminalHeight || 24, 20)} justifyContent="flex-end" flexDirection="column">
-          <FileApprovalPrompt
-            operation={pendingFileOperation.operation}
-            filePath={pendingFileOperation.filePath}
-            details={pendingFileOperation.details}
-          />
-        </Box>
-      )}
-
-      {/* Mode and Agent selectors removed - using simplified participants model */}
+      {/* Approval dialogs moved to bottom of page after status bar */}
 
       {/* Permissions Input Dialog */}
       {activeDialog === 'permissions-input' && (
@@ -1188,6 +1283,64 @@ Now help the user build some cool shit.`;
           reasoningLevel={config.supportsReasoning ? modelManager.getReasoningEffort() : undefined}
         />
       </Box>
+
+      {/* Bash Approval - Overlayed at bottom */}
+      {activeDialog === 'bash-approval' && pendingBashCommand && (
+        <Box marginTop={2} borderStyle="round" borderColor="yellow" padding={1}>
+          <BashApprovalPrompt
+            command={pendingBashCommand}
+            onApprove={() => {
+              setPendingBashCommand(null);
+              setActiveDialog(null);
+              if (bashApprovalResolver) {
+                bashApprovalResolver(true);
+                setBashApprovalResolver(null);
+              }
+            }}
+            onDeny={() => {
+              setPendingBashCommand(null);
+              setActiveDialog(null);
+              if (bashApprovalResolver) {
+                bashApprovalResolver(false);
+                setBashApprovalResolver(null);
+              }
+            }}
+            onAlwaysApprove={() => {
+              const setup = fileSystem.loadSetup();
+              setup.approvedCommands.push(pendingBashCommand);
+              fileSystem.saveSetup(setup);
+              setPendingBashCommand(null);
+              setActiveDialog(null);
+              if (bashApprovalResolver) {
+                bashApprovalResolver(true);
+                setBashApprovalResolver(null);
+              }
+            }}
+            onAlwaysDeny={() => {
+              const setup = fileSystem.loadSetup();
+              setup.deniedCommands.push(pendingBashCommand);
+              fileSystem.saveSetup(setup);
+              setPendingBashCommand(null);
+              setActiveDialog(null);
+              if (bashApprovalResolver) {
+                bashApprovalResolver(false);
+                setBashApprovalResolver(null);
+              }
+            }}
+          />
+        </Box>
+      )}
+
+      {/* File Approval - Overlayed at bottom */}
+      {activeDialog === 'file-approval' && pendingFileOperation && (
+        <Box marginTop={2}>
+          <FileApprovalPrompt
+            operation={pendingFileOperation.operation}
+            filePath={pendingFileOperation.filePath}
+            details={pendingFileOperation.details}
+          />
+        </Box>
+      )}
     </Box>
   );
 };

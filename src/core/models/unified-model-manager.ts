@@ -8,6 +8,8 @@ import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { toAnthropicContent, contentToText } from '../utils/content-helpers.js';
 import { mcpToAnthropicTools, mcpToOpenAITools, mcpToGoogleTools } from '../utils/tool-converter.js';
+import { ContextWindowManager } from '../utils/context-manager.js';
+import { enablePromptCaching } from '../utils/prompt-caching.js';
 
 export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'ollama';
 
@@ -15,7 +17,10 @@ export interface ModelConfig {
   id: string;
   name: string;
   provider: ModelProvider;
-  supportsThinking?: boolean;
+  supportsThinking?: boolean; // Extended thinking (budget_tokens)
+  supportsInterleavedThinking?: boolean; // NEW: Interleaved thinking (Sonnet 4 only)
+  supportsComputerUse?: boolean; // NEW: Computer use capability
+  supportsPromptCaching?: boolean; // NEW: Prompt caching
   supportsReasoning?: boolean;
   supportsVision?: boolean;
   reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
@@ -30,6 +35,9 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'Claude Opus 4.1',
     provider: 'anthropic',
     supportsThinking: true,
+    supportsInterleavedThinking: true,
+    supportsComputerUse: true,
+    supportsPromptCaching: true,
     maxTokens: 32000,
     contextWindow: 200000,
   },
@@ -38,6 +46,9 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'Claude Sonnet 4',
     provider: 'anthropic',
     supportsThinking: true,
+    supportsInterleavedThinking: true,
+    supportsComputerUse: true,
+    supportsPromptCaching: true,
     maxTokens: 64000,
     contextWindow: 1000000,
   },
@@ -46,6 +57,9 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'Claude Sonnet 4.5',
     provider: 'anthropic',
     supportsThinking: true,
+    supportsInterleavedThinking: true,
+    supportsComputerUse: true,
+    supportsPromptCaching: true,
     maxTokens: 64000,
     contextWindow: 1000000,
   },
@@ -54,6 +68,9 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'Claude Haiku 4.5',
     provider: 'anthropic',
     supportsThinking: false,
+    supportsInterleavedThinking: false,
+    supportsComputerUse: true,
+    supportsPromptCaching: true,
     maxTokens: 64000,
     contextWindow: 200000,
   },
@@ -68,6 +85,15 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     maxTokens: 16384,
     contextWindow: 128000,
   },
+  'gpt-5-pro': {
+    id: 'gpt-5-pro',
+    name: 'GPT-5 Pro',
+    provider: 'openai',
+    supportsReasoning: true,
+    reasoningEffort: 'high', // Only supports high
+    maxTokens: 32768,
+    contextWindow: 128000,
+  },
   'gpt-5-mini': {
     id: 'gpt-5-mini',
     name: 'GPT-5 Mini',
@@ -77,12 +103,44 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     maxTokens: 16384,
     contextWindow: 128000,
   },
+  'gpt-5-nano': {
+    id: 'gpt-5-nano',
+    name: 'GPT-5 Nano',
+    provider: 'openai',
+    supportsReasoning: false,
+    maxTokens: 8192,
+    contextWindow: 128000,
+  },
+  'gpt-5-codex': {
+    id: 'gpt-5-codex',
+    name: 'GPT-5 Codex',
+    provider: 'openai',
+    supportsReasoning: false,
+    maxTokens: 16384,
+    contextWindow: 128000,
+  },
+  'codex-mini-latest': {
+    id: 'codex-mini-latest',
+    name: 'Codex Mini',
+    provider: 'openai',
+    supportsReasoning: false,
+    maxTokens: 8192,
+    contextWindow: 100000,
+  },
   'gpt-4.1': {
     id: 'gpt-4.1',
     name: 'GPT-4.1',
     provider: 'openai',
     supportsReasoning: false,
     maxTokens: 4096,
+    contextWindow: 128000,
+  },
+  'gpt-4.1-mini': {
+    id: 'gpt-4.1-mini',
+    name: 'GPT-4.1 Mini',
+    provider: 'openai',
+    supportsReasoning: false,
+    maxTokens: 16384,
     contextWindow: 128000,
   },
   'gpt-4o': {
@@ -94,21 +152,84 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     maxTokens: 4096,
     contextWindow: 128000,
   },
-  'o3': {
-    id: 'o3',
-    name: 'O3 (Reasoning)',
+  'gpt-4o-mini': {
+    id: 'gpt-4o-mini',
+    name: 'GPT-4o Mini',
+    provider: 'openai',
+    supportsReasoning: false,
+    supportsVision: true,
+    maxTokens: 16384,
+    contextWindow: 128000,
+  },
+  'gpt-4o-search-preview': {
+    id: 'gpt-4o-search-preview',
+    name: 'GPT-4o Search',
+    provider: 'openai',
+    supportsReasoning: false,
+    supportsVision: true,
+    maxTokens: 16384,
+    contextWindow: 128000,
+  },
+  'o1': {
+    id: 'o1',
+    name: 'O1',
+    provider: 'openai',
+    supportsReasoning: true,
+    reasoningEffort: 'medium',
+    maxTokens: 100000,
+    contextWindow: 200000,
+  },
+  'o1-pro': {
+    id: 'o1-pro',
+    name: 'O1 Pro',
     provider: 'openai',
     supportsReasoning: true,
     reasoningEffort: 'high',
     maxTokens: 100000,
     contextWindow: 200000,
   },
+  'o3': {
+    id: 'o3',
+    name: 'O3',
+    provider: 'openai',
+    supportsReasoning: true,
+    reasoningEffort: 'high',
+    maxTokens: 100000,
+    contextWindow: 200000,
+  },
+  'o3-pro': {
+    id: 'o3-pro',
+    name: 'O3 Pro',
+    provider: 'openai',
+    supportsReasoning: true,
+    reasoningEffort: 'high',
+    maxTokens: 100000,
+    contextWindow: 200000,
+  },
+  'o3-mini': {
+    id: 'o3-mini',
+    name: 'O3 Mini',
+    provider: 'openai',
+    supportsReasoning: true,
+    reasoningEffort: 'low',
+    maxTokens: 65536,
+    contextWindow: 200000,
+  },
   'o4-mini': {
     id: 'o4-mini',
-    name: 'O4 Mini (Reasoning)',
+    name: 'O4 Mini',
     provider: 'openai',
     supportsReasoning: true,
     reasoningEffort: 'medium',
+    maxTokens: 65536,
+    contextWindow: 200000,
+  },
+  'o4-mini-deep-research': {
+    id: 'o4-mini-deep-research',
+    name: 'O4 Mini Deep Research',
+    provider: 'openai',
+    supportsReasoning: true,
+    reasoningEffort: 'high',
     maxTokens: 65536,
     contextWindow: 200000,
   },
@@ -119,6 +240,15 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'Gemini 2.0 Flash',
     provider: 'google',
     supportsVision: true,
+    maxTokens: 8192,
+    contextWindow: 1000000,
+  },
+  'gemini-2-0-flash-thinking-exp-01-21': {
+    id: 'gemini-2-0-flash-thinking-exp-01-21',
+    name: 'Gemini 2.0 Flash Thinking',
+    provider: 'google',
+    supportsVision: true,
+    supportsReasoning: true,
     maxTokens: 8192,
     contextWindow: 1000000,
   },
@@ -202,13 +332,22 @@ export interface ModelResponse {
 }
 
 export class UnifiedModelManager {
-  private anthropic?: Anthropic;
+  private anthropic?: Anthropic; // Standard client (5 min timeout)
+  private anthropicStreaming?: Anthropic; // Streaming client (10 min timeout)
+  private anthropicComputerUse?: Anthropic; // Computer use client (15 min timeout)
   private openai?: OpenAI;
   private google?: GoogleGenerativeAI;
   private currentModel: string;
   private thinkingEnabled: boolean = true;
+  private interleavedThinkingEnabled: boolean = false; // NEW: Interleaved thinking
+  private computerUseEnabled: boolean = false; // NEW: Computer use capability
+  private promptCachingEnabled: boolean = true; // NEW: Prompt caching (enabled by default)
+  private skillsEnabled: boolean = false; // NEW: Agent Skills support
   private reasoningEffort: 'minimal' | 'low' | 'medium' | 'high' = 'high';
+  private verbosity: 'low' | 'medium' | 'high' = 'high'; // GPT-5 verbosity control
   private lastResponseId?: string;
+  private conversationHistory: Message[] = []; // NEW: For rolling context window management
+  private contextManager?: ContextWindowManager; // NEW: Context window manager
 
   constructor(
     anthropicKey?: string,
@@ -216,9 +355,28 @@ export class UnifiedModelManager {
     googleKey?: string,
     defaultModel?: string
   ) {
-    // Initialize only the clients for which we have API keys
+    // Initialize multiple Anthropic clients with different timeout configurations
     if (anthropicKey) {
-      this.anthropic = new Anthropic({ apiKey: anthropicKey });
+      // Standard client: 5 minutes (300,000ms) for regular operations
+      this.anthropic = new Anthropic({
+        apiKey: anthropicKey,
+        timeout: 300000, // 5 minutes
+        maxRetries: 3,
+      });
+
+      // Streaming client: 10 minutes (600,000ms) for streaming + extended thinking
+      this.anthropicStreaming = new Anthropic({
+        apiKey: anthropicKey,
+        timeout: 600000, // 10 minutes
+        maxRetries: 5,
+      });
+
+      // Computer use client: 15 minutes (900,000ms) for computer automation tasks
+      this.anthropicComputerUse = new Anthropic({
+        apiKey: anthropicKey,
+        timeout: 900000, // 15 minutes
+        maxRetries: 5,
+      });
     }
     if (openaiKey) {
       this.openai = new OpenAI({ apiKey: openaiKey });
@@ -236,6 +394,15 @@ export class UnifiedModelManager {
       else if (openaiKey) this.currentModel = 'gpt-5';
       else if (googleKey) this.currentModel = 'gemini-2.0-flash-exp';
       else this.currentModel = ''; // No keys provided
+    }
+
+    // Initialize context manager for models with large context windows
+    if (this.currentModel && this.getModelConfig().contextWindow >= 1000000) {
+      this.contextManager = new ContextWindowManager({
+        maxTokens: this.getModelConfig().contextWindow,
+        targetTokens: Math.floor(this.getModelConfig().contextWindow * 0.8),
+        compressionThreshold: 0.9,
+      });
     }
   }
 
@@ -292,9 +459,92 @@ export class UnifiedModelManager {
   }
 
   /**
+   * Toggle interleaved thinking mode (Sonnet 4 only)
+   */
+  toggleInterleavedThinking(): boolean {
+    this.interleavedThinkingEnabled = !this.interleavedThinkingEnabled;
+    return this.interleavedThinkingEnabled;
+  }
+
+  /**
+   * Get interleaved thinking state
+   */
+  isInterleavedThinkingEnabled(): boolean {
+    return this.interleavedThinkingEnabled;
+  }
+
+  /**
+   * Toggle computer use capability
+   */
+  toggleComputerUse(): boolean {
+    this.computerUseEnabled = !this.computerUseEnabled;
+    return this.computerUseEnabled;
+  }
+
+  /**
+   * Get computer use state
+   */
+  isComputerUseEnabled(): boolean {
+    return this.computerUseEnabled;
+  }
+
+  /**
+   * Toggle prompt caching
+   */
+  togglePromptCaching(): boolean {
+    this.promptCachingEnabled = !this.promptCachingEnabled;
+    return this.promptCachingEnabled;
+  }
+
+  /**
+   * Get prompt caching state
+   */
+  isPromptCachingEnabled(): boolean {
+    return this.promptCachingEnabled;
+  }
+
+  /**
+   * Toggle Agent Skills support
+   */
+  toggleSkills(): boolean {
+    this.skillsEnabled = !this.skillsEnabled;
+    return this.skillsEnabled;
+  }
+
+  /**
+   * Get Agent Skills state
+   */
+  isSkillsEnabled(): boolean {
+    return this.skillsEnabled;
+  }
+
+  /**
+   * Get the appropriate Anthropic client based on operation type
+   */
+  private getAnthropicClient(): Anthropic {
+    if (this.computerUseEnabled && this.anthropicComputerUse) {
+      return this.anthropicComputerUse; // 15 min timeout for computer use
+    }
+    return this.anthropic!; // 5 min timeout for standard operations
+  }
+
+  /**
+   * Get streaming client (10 min timeout)
+   */
+  private getAnthropicStreamingClient(): Anthropic {
+    return this.anthropicStreaming || this.anthropic!;
+  }
+
+  /**
    * Toggle reasoning effort (for OpenAI reasoning models)
    */
   toggleReasoning(): 'minimal' | 'low' | 'medium' | 'high' {
+    // GPT-5 Pro only supports 'high' reasoning - don't allow toggling
+    if (this.currentModel === 'gpt-5-pro') {
+      console.warn('⚠️ GPT-5 Pro only supports high reasoning effort. Cannot toggle.');
+      return 'high';
+    }
+
     const levels: Array<'minimal' | 'low' | 'medium' | 'high'> = ['minimal', 'low', 'medium', 'high'];
     const currentIndex = levels.indexOf(this.reasoningEffort);
     this.reasoningEffort = levels[(currentIndex + 1) % levels.length];
@@ -306,6 +556,32 @@ export class UnifiedModelManager {
    */
   getReasoningEffort(): 'minimal' | 'low' | 'medium' | 'high' {
     return this.reasoningEffort;
+  }
+
+  /**
+   * Set reasoning effort (with validation for GPT-5 Pro)
+   */
+  setReasoningEffort(effort: 'minimal' | 'low' | 'medium' | 'high'): void {
+    // GPT-5 Pro only supports 'high' reasoning
+    if (this.currentModel === 'gpt-5-pro' && effort !== 'high') {
+      console.warn('⚠️ GPT-5 Pro only supports high reasoning effort. Ignoring change.');
+      return;
+    }
+    this.reasoningEffort = effort;
+  }
+
+  /**
+   * Get verbosity level (GPT-5 specific)
+   */
+  getVerbosity(): 'low' | 'medium' | 'high' {
+    return this.verbosity;
+  }
+
+  /**
+   * Set verbosity level (GPT-5 specific)
+   */
+  setVerbosity(level: 'low' | 'medium' | 'high'): void {
+    this.verbosity = level;
   }
 
   /**
@@ -372,19 +648,63 @@ export class UnifiedModelManager {
 
     // MAXIMUM CREATIVITY! All models use temperature 1.0 🔥
     const useThinking = this.getModelConfig().supportsThinking && this.thinkingEnabled;
+    const useInterleavedThinking = this.getModelConfig().supportsThinking && this.interleavedThinkingEnabled;
 
-    const response = await this.anthropic.messages.create({
+    // Build extra headers for beta features
+    const betaFeatures: string[] = [];
+
+    if (useInterleavedThinking) {
+      betaFeatures.push('interleaved-thinking-2025-05-14');
+    }
+    if (this.computerUseEnabled) {
+      betaFeatures.push('computer-use-2025-01-24');
+    }
+    if (this.promptCachingEnabled) {
+      betaFeatures.push('prompt-caching-2024-07-31');
+    }
+    if (this.skillsEnabled) {
+      // Agent Skills requires 3 beta headers
+      betaFeatures.push('code-execution-2025-08-25');
+      betaFeatures.push('skills-2025-10-02');
+      betaFeatures.push('files-api-2025-04-14');
+    }
+
+    const extraHeaders: Record<string, string> = {};
+    if (betaFeatures.length > 0) {
+      extraHeaders['anthropic-beta'] = betaFeatures.join(',');
+    }
+
+    // Enable prompt caching if enabled
+    let finalSystem: any = systemPromptText;
+    let finalMessages = formattedMessages;
+
+    if (this.promptCachingEnabled && systemPromptText) {
+      const cached = enablePromptCaching(systemPromptText, messages);
+      finalSystem = cached.system;
+      finalMessages = cached.messages
+        .filter(m => m.role !== 'system')
+        .map(m => ({
+          role: m.role as 'user' | 'assistant',
+          content: toAnthropicContent(m.content),
+        }));
+    }
+
+    // Use appropriate client based on operation type
+    const client = this.getAnthropicClient();
+
+    const response = await client.messages.create({
       model: this.currentModel,
       max_tokens: options.maxTokens || this.getModelConfig().maxTokens,
       temperature: 1.0,
-      system: systemPromptText,
-      messages: formattedMessages as any,
-      ...(useThinking && {
+      system: finalSystem,
+      messages: finalMessages as any,
+      ...(useThinking && !useInterleavedThinking && {
         thinking: {
           type: 'enabled',
           budget_tokens: 200000,
         },
       }),
+      ...(Object.keys(extraHeaders).length > 0 && { extra_headers: extraHeaders }),
     } as any);
 
     const textContent = response.content.find(c => c.type === 'text');
@@ -429,6 +749,7 @@ export class UnifiedModelManager {
       temperature?: number;
       maxTokens?: number;
       systemPrompt?: string;
+      tools?: any[];
     }
   ): Promise<ModelResponse> {
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
@@ -470,6 +791,15 @@ export class UnifiedModelManager {
       temperature: 1.0,
       // Use previous_response_id for context chaining
       ...(this.lastResponseId && { previous_response_id: this.lastResponseId }),
+      // Add tool support - convert MCP format to OpenAI Responses API format
+      // NOTE: Responses API is agentic by default, no parallel_tool_calls param needed
+      ...(options.tools && options.tools.length > 0 && {
+        tools: mcpToOpenAITools(options.tools),
+      }),
+      // GPT-5 verbosity control
+      text: {
+        verbosity: this.verbosity,
+      },
       // Enable reasoning for supported models
       ...(this.getModelConfig().supportsReasoning && {
         reasoning: {
@@ -562,8 +892,36 @@ export class UnifiedModelManager {
 
     // MAXIMUM CREATIVITY! All models use temperature 1.0 🔥
     const useThinking = this.getModelConfig().supportsThinking && this.thinkingEnabled;
+    const useInterleavedThinking = this.getModelConfig().supportsThinking && this.interleavedThinkingEnabled;
 
-    const stream = await this.anthropic.messages.stream({
+    // Build extra headers for beta features
+    const betaFeatures: string[] = [];
+
+    if (useInterleavedThinking) {
+      betaFeatures.push('interleaved-thinking-2025-05-14');
+    }
+    if (this.computerUseEnabled) {
+      betaFeatures.push('computer-use-2025-01-24');
+    }
+    if (this.promptCachingEnabled) {
+      betaFeatures.push('prompt-caching-2024-07-31');
+    }
+    if (this.skillsEnabled) {
+      // Agent Skills requires 3 beta headers
+      betaFeatures.push('code-execution-2025-08-25');
+      betaFeatures.push('skills-2025-10-02');
+      betaFeatures.push('files-api-2025-04-14');
+    }
+
+    const extraHeaders: Record<string, string> = {};
+    if (betaFeatures.length > 0) {
+      extraHeaders['anthropic-beta'] = betaFeatures.join(',');
+    }
+
+    // Use streaming client (10 min timeout)
+    const client = this.getAnthropicStreamingClient();
+
+    const stream = await client.messages.stream({
       model: this.currentModel,
       max_tokens: options.maxTokens || this.getModelConfig().maxTokens,
       temperature: 1.0,
@@ -571,12 +929,13 @@ export class UnifiedModelManager {
       messages: formattedMessages as any,
       // Add tool support - convert MCP format to Anthropic format
       ...(options.tools && options.tools.length > 0 && { tools: mcpToAnthropicTools(options.tools) as any }),
-      ...(useThinking && {
+      ...(useThinking && !useInterleavedThinking && {
         thinking: {
           type: 'enabled',
           budget_tokens: 200000,
         },
       }),
+      ...(Object.keys(extraHeaders).length > 0 && { extra_headers: extraHeaders }),
     } as any);
 
     // Track tool calls being built up from deltas 🔥
@@ -646,6 +1005,7 @@ export class UnifiedModelManager {
       temperature?: number;
       maxTokens?: number;
       systemPrompt?: string;
+      tools?: any[];
     }
   ): AsyncGenerator<StreamChunk> {
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
@@ -681,6 +1041,15 @@ export class UnifiedModelManager {
       temperature: 1.0,
       stream: true,
       ...(this.lastResponseId && { previous_response_id: this.lastResponseId }),
+      // Add tool support - convert MCP format to OpenAI Responses API format
+      // NOTE: Responses API is agentic by default, no parallel_tool_calls param needed
+      ...(options.tools && options.tools.length > 0 && {
+        tools: mcpToOpenAITools(options.tools),
+      }),
+      // GPT-5 verbosity control
+      text: {
+        verbosity: this.verbosity,
+      },
       ...(this.getModelConfig().supportsReasoning && {
         reasoning: {
           effort: this.reasoningEffort,
@@ -690,20 +1059,47 @@ export class UnifiedModelManager {
     } as any);
 
     for await (const chunk of (stream as any)) {
+      // Log ALL events to debug stream issues
+      console.log('📨 OpenAI Event:', chunk.type);
+
       if (chunk.type === 'response.output_text.delta') {
         yield {
           type: 'text',
           content: (chunk as any).delta,
         };
       } else if (chunk.type === 'response.reasoning_summary_text.delta') {
+        // Reasoning summary chunks
         yield {
           type: 'reasoning',
           content: (chunk as any).delta,
         };
+      } else if (chunk.type === 'response.reasoning.delta') {
+        // Full reasoning chunks (not just summary)
+        yield {
+          type: 'reasoning',
+          content: (chunk as any).delta || (chunk as any).content || '',
+        };
+      } else if (chunk.type === 'response.reasoning.done') {
+        // Reasoning finished - DON'T stop stream, just log
+        console.log('✅ Reasoning complete, continuing stream...');
+        // Don't yield anything, keep streaming
       } else if (chunk.type === 'response.created') {
         this.lastResponseId = (chunk as any).response.id;
       } else if (chunk.type === 'response.completed') {
+        console.log('✅ Response complete');
         yield { type: 'done' };
+      } else if (chunk.type && chunk.type.includes('reasoning')) {
+        // Catch any other reasoning-related events we might have missed
+        console.log('🔍 Unknown reasoning event type:', chunk.type, JSON.stringify(chunk));
+        if (chunk.delta || chunk.content) {
+          yield {
+            type: 'reasoning',
+            content: (chunk as any).delta || (chunk as any).content || '',
+          };
+        }
+      } else {
+        // Log unhandled events
+        console.log('⚠️ Unhandled event type:', chunk.type);
       }
     }
   }
@@ -818,5 +1214,30 @@ export class UnifiedModelManager {
    */
   resetConversation(): void {
     this.lastResponseId = undefined;
+    if (this.contextManager) {
+      this.contextManager.clear();
+    }
+  }
+
+  /**
+   * Get context window statistics (for large context models)
+   */
+  getContextStats(): {
+    messageCount: number;
+    tokenCount: number;
+    maxTokens: number;
+    utilizationPercent: number;
+  } | null {
+    return this.contextManager ? this.contextManager.getStats() : null;
+  }
+
+  /**
+   * Add messages to context manager
+   */
+  async addToContext(messages: Message[]): Promise<void> {
+    if (this.contextManager) {
+      await this.contextManager.addMessages(messages);
+    }
+    this.conversationHistory.push(...messages);
   }
 }

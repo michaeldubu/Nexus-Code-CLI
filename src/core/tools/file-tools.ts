@@ -186,6 +186,14 @@ export class FileTools {
       const content = readFileSync(fullPath, 'utf-8');
       const lines = content.split('\n');
 
+      // Warn about large files without offset/limit to prevent context overflow
+      if ((offset === undefined && limit === undefined) && lines.length > 1000) {
+        return {
+          success: false,
+          error: `⚠️  File too large: ${lines.length} lines!\n\nTo prevent context overflow, please use offset/limit parameters:\n  Example: read_file({ file_path: "${filePath}", offset: 0, limit: 100 })\n\nOr use grep to find specific sections first.`,
+        };
+      }
+
       let selectedLines: string[];
       if (offset !== undefined || limit !== undefined) {
         const start = offset || 0;

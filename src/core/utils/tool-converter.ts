@@ -24,7 +24,8 @@ export interface AnthropicTool {
   };
 }
 
-export interface OpenAITool {
+// OpenAI Chat Completions format (legacy)
+export interface OpenAIChatTool {
   type: 'function';
   function: {
     name: string;
@@ -35,6 +36,19 @@ export interface OpenAITool {
       required?: string[];
     };
   };
+}
+
+// OpenAI Responses API format (new)
+export interface OpenAITool {
+  type: 'function' | 'custom';
+  name: string;
+  description: string;
+  parameters?: {
+    type: string;
+    properties: Record<string, any>;
+    required?: string[];
+  };
+  strict?: boolean;
 }
 
 export interface GoogleTool {
@@ -93,7 +107,8 @@ export function mcpToAnthropicTools(mcpTools: any[]): AnthropicTool[] {
 }
 
 /**
- * Convert any tool format to OpenAI format 🚀
+ * Convert any tool format to OpenAI Responses API format 🚀
+ * NOTE: Responses API uses a different format than Chat Completions
  */
 export function mcpToOpenAITools(mcpTools: any[]): OpenAITool[] {
   if (!mcpTools || mcpTools.length === 0) {
@@ -101,15 +116,14 @@ export function mcpToOpenAITools(mcpTools: any[]): OpenAITool[] {
   }
 
   return mcpTools.map((tool) => {
-    let inputSchema = tool.input_schema || tool.inputSchema || tool.parameters || {};
+    const inputSchema = tool.input_schema || tool.inputSchema || tool.parameters || {};
 
     return {
       type: 'function' as const,
-      function: {
-        name: tool.name,
-        description: tool.description || '',
-        parameters: inputSchema,
-      },
+      name: tool.name,
+      description: tool.description || '',
+      parameters: inputSchema,
+      strict: false, // Can enable strict mode if needed
     };
   });
 }

@@ -114,7 +114,6 @@ export class NexusFileSystem {
       approvedCommands: [
         'ls',
         'pwd',
-        'cd',
         'cat',
         'git status',
         'git diff',
@@ -138,7 +137,7 @@ export class NexusFileSystem {
         },
         'claude-haiku-4-5-20250514': {
           temperature: 1.0,
-          maxTokens: 4096,
+          maxTokens: 64000,
           thinking: false,
         },
         'gpt-5': {
@@ -150,7 +149,7 @@ export class NexusFileSystem {
       permissions: {
         autoApprove: false,
         allowedPaths: [],
-        deniedPaths: ['.env', 'credentials.json', '*.key', '*.pem'],
+        deniedPaths: ['credentials.json', '*.key', '*.pem'],
       },
     };
 
@@ -327,7 +326,7 @@ export class NexusFileSystem {
   /**
    * Get messages for restoration (fork points)
    */
-  getRestorePoints(limit: number = 5): Array<{
+  getRestorePoints(limit: number = 15): Array<{
     index: number;
     message: ConversationMessage;
     preview: string;

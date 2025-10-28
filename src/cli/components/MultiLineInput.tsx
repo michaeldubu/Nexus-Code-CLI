@@ -113,19 +113,36 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
         return;
       }
 
-      // Ctrl+V - Check for file paths in clipboard (simplified detection)
-      if (key.ctrl && input === 'v') {
-        // In a real implementation, you'd use clipboard libraries
-        // For now, we'll handle file path detection differently
-        return;
-      }
-
       // Regular character input
       if (input && !key.ctrl && !key.meta) {
         const newValue =
           value.slice(0, cursorOffset) + input + value.slice(cursorOffset);
         onChange(newValue);
         setCursorOffset(cursorOffset + input.length);
+
+        // Auto-detect file paths when user types/pastes them
+        // Look for patterns like /path/to/file.png or ./relative/path.jpg
+        const pathPattern = /(?:\.\/|\/|~\/)[^\s]+\.(png|jpg|jpeg|gif|webp|bmp|txt|md|json|js|ts|tsx|jsx|py|go|rs)/gi;
+        const matches = newValue.match(pathPattern);
+
+        if (matches && matches.length > 0) {
+          // Get the last match (most recently typed/pasted path)
+          const lastPath = matches[matches.length - 1];
+
+          // Check if we haven't already attached this file
+          const alreadyAttached = attachedFiles.some(f => f.fileName === path.basename(lastPath));
+
+          if (!alreadyAttached && fs.existsSync(lastPath)) {
+            // Auto-attach the file and remove the path from text
+            setTimeout(() => {
+              attachFile(lastPath);
+              // Remove the file path from the input text
+              const cleanedValue = newValue.replace(lastPath, '').trim();
+              onChange(cleanedValue);
+              setCursorOffset(cleanedValue.length);
+            }, 10);
+          }
+        }
       }
     },
     { isActive: !disabled }
@@ -175,8 +192,8 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
           ext === '.webp' ? 'image/webp' :
           'image/bmp';
 
-        setAttachedFiles([
-          ...attachedFiles,
+        setAttachedFiles(prev => [
+          ...prev,
           {
             type: 'image',
             content: base64,
@@ -189,8 +206,8 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
         const textExts = ['.txt', '.md', '.json', '.js', '.ts', '.tsx', '.jsx', '.py', '.go', '.rs'];
         if (textExts.includes(ext) && fs.statSync(filePath).size < 1024 * 1024) {
           const fileContent = fs.readFileSync(filePath, 'utf-8');
-          setAttachedFiles([
-            ...attachedFiles,
+          setAttachedFiles(prev => [
+            ...prev,
             {
               type: 'file',
               content: fileContent,
