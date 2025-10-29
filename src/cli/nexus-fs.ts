@@ -114,13 +114,9 @@ export class NexusFileSystem {
       approvedCommands: [
         'ls',
         'pwd',
-        'cat',
         'git status',
         'git diff',
         'git log',
-        'npm',
-        'node',
-        'python',
       ],
       deniedCommands: [
         'rm -rf',
@@ -128,7 +124,7 @@ export class NexusFileSystem {
         'chmod 777',
         'dd',
       ],
-      defaultModel: 'claude-sonnet-4-5-20250929',
+      defaultModel: 'claude-haiku-4-5-20250514',
       modelPreferences: {
         'claude-sonnet-4-5-20250929': {
           temperature: 1.0,
@@ -136,8 +132,8 @@ export class NexusFileSystem {
           thinking: true,
         },
         'claude-haiku-4-5-20250514': {
-          temperature: 1.0,
-          maxTokens: 4096,
+          temperature: 0.2,
+          maxTokens: 64000,
           thinking: false,
         },
         'gpt-5': {
@@ -280,7 +276,7 @@ export class NexusFileSystem {
   /**
    * Get recent file changes (for /restore-code)
    */
-  getRecentFileChanges(limit: number = 10): FileChange[] {
+  getRecentFileChanges(limit: number = 100): FileChange[] {
     const session = this.loadCurrentSession();
     return session.fileChanges.slice(-limit).reverse();
   }
@@ -326,7 +322,7 @@ export class NexusFileSystem {
   /**
    * Get messages for restoration (fork points)
    */
-  getRestorePoints(limit: number = 15): Array<{
+  getRestorePoints(limit: number = 100): Array<{
     index: number;
     message: ConversationMessage;
     preview: string;

@@ -12,6 +12,7 @@ interface Props {
   thinkingEnabled?: boolean;
   reasoningLevel?: string;
   mode?: string; // Editing mode: normal, plan, autoedit, yolo
+  mcpConnected?: boolean; // JetBrains plugin connection status
 }
 
 export const StatusBar: React.FC<Props> = ({
@@ -21,6 +22,7 @@ export const StatusBar: React.FC<Props> = ({
   thinkingEnabled,
   reasoningLevel,
   mode,
+  mcpConnected,
 }) => {
   // Truncate working directory if too long
   const truncatedDir = workingDir.length > 30 ? '...' + workingDir.slice(-27) : workingDir;
@@ -70,6 +72,16 @@ export const StatusBar: React.FC<Props> = ({
             bold={mode !== 'normal'}
           >
             {mode.toUpperCase()}
+          </Text>
+        </>
+      )}
+
+      {/* MCP Status */}
+      {mcpConnected !== undefined && (
+        <>
+          <Text color="green"> │ </Text>
+          <Text color={mcpConnected ? 'greenBright' : 'gray'} bold={mcpConnected}>
+            {mcpConnected ? '🧠 MCP' : '⚪ MCP'}
           </Text>
         </>
       )}

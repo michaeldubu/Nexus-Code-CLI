@@ -495,6 +495,6 @@ export async function exampleUsage() {
 }
 
 // Run example if executed directly
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   exampleUsage().catch(console.error);
 }

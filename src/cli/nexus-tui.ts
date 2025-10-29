@@ -14,6 +14,7 @@ import { UnifiedModelManager } from '../core/models/unified-model-manager.js';
 import { NexusTUI } from './components/NexusTUI.js';
 import { MCPServer } from '../core/mcp/client.js';
 import { registerFileTools, getFileToolsDefinitions } from '../core/mcp/file-tools-mcp.js';
+import { getMCPManager } from '../core/mcp/mcp-manager.js';
 
 // Load environment variables
 dotenvConfig();
@@ -89,6 +90,11 @@ async function main() {
     return result.output || 'Success';
   });
 
+  // Initialize MCP Manager and try to connect to JetBrains plugin
+  // Silent by default - only shows success message if plugin available
+  const mcpManager = getMCPManager();
+  const mcpConnected = await mcpManager.autoConnect();
+
   // Get tool definitions for passing to AI models
   const toolDefinitions = [
     ...getFileToolsDefinitions(),
@@ -144,6 +150,7 @@ async function main() {
       fileTools,
       memoryTool,
       mcpServer,
+      mcpManager,
       toolDefinitions,
     }),
     {

@@ -5,10 +5,9 @@
 
 import WebSocket from 'ws';
 import { readFileSync } from 'fs';
-import { join } from 'path';
 
-// Read lock file
-const lockFilePath = '/home/michael/saaam_dev/.nexus-code/50000.json';
+// Read lock file from CURRENT location
+const lockFilePath = '/home/michael/Desktop/SAAAM_LLC/SAAAM_DEV_AREA/.nexus-code/50000.json';
 const lockFile = JSON.parse(readFileSync(lockFilePath, 'utf-8'));
 
 console.log('🔌 Connecting to JetBrains plugin...');

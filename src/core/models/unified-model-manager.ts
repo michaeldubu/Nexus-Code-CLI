@@ -100,7 +100,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     provider: 'openai',
     supportsReasoning: true,
     reasoningEffort: 'low',
-    maxTokens: 16384,
+    maxTokens: 32768,
     contextWindow: 128000,
   },
   'gpt-5-nano': {
@@ -108,7 +108,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'GPT-5 Nano',
     provider: 'openai',
     supportsReasoning: false,
-    maxTokens: 8192,
+    maxTokens: 32768,
     contextWindow: 128000,
   },
   'gpt-5-codex': {
@@ -116,7 +116,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'GPT-5 Codex',
     provider: 'openai',
     supportsReasoning: false,
-    maxTokens: 16384,
+    maxTokens: 32768,
     contextWindow: 128000,
   },
   'codex-mini-latest': {
@@ -124,7 +124,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'Codex Mini',
     provider: 'openai',
     supportsReasoning: false,
-    maxTokens: 8192,
+    maxTokens: 32768,
     contextWindow: 100000,
   },
   'gpt-4.1': {
@@ -132,7 +132,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'GPT-4.1',
     provider: 'openai',
     supportsReasoning: false,
-    maxTokens: 4096,
+    maxTokens: 32768,
     contextWindow: 128000,
   },
   'gpt-4.1-mini': {
@@ -140,7 +140,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'GPT-4.1 Mini',
     provider: 'openai',
     supportsReasoning: false,
-    maxTokens: 16384,
+    maxTokens: 32768,
     contextWindow: 128000,
   },
   'gpt-4o': {
@@ -149,7 +149,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     provider: 'openai',
     supportsReasoning: false,
     supportsVision: true,
-    maxTokens: 4096,
+    maxTokens: 16384,
     contextWindow: 128000,
   },
   'gpt-4o-mini': {
@@ -358,24 +358,24 @@ export class UnifiedModelManager {
   ) {
     // Initialize multiple Anthropic clients with different timeout configurations
     if (anthropicKey) {
-      // Standard client: 5 minutes (300,000ms) for regular operations
+      // Standard client: 10 minutes (600,000ms) for regular operations
       this.anthropic = new Anthropic({
         apiKey: anthropicKey,
-        timeout: 300000, // 5 minutes
+        timeout: 600000, // 10 minutes
         maxRetries: 3,
       });
 
-      // Streaming client: 10 minutes (600,000ms) for streaming + extended thinking
+      // Streaming client: 20 minutes (1,200,000ms) for streaming + extended thinking
       this.anthropicStreaming = new Anthropic({
         apiKey: anthropicKey,
-        timeout: 600000, // 10 minutes
+        timeout: 1200000, // 20 minutes
         maxRetries: 5,
       });
 
-      // Computer use client: 15 minutes (900,000ms) for computer automation tasks
+      // Computer use client: 20 minutes (1,200,000ms) for computer automation tasks
       this.anthropicComputerUse = new Anthropic({
         apiKey: anthropicKey,
-        timeout: 900000, // 15 minutes
+        timeout: 1200000, // 20 minutes
         maxRetries: 5,
       });
     }
@@ -481,7 +481,7 @@ export class UnifiedModelManager {
   }
 
   /**
-   * Toggle thinking mode (for Claude)
+   * Toggle thinking mode
    */
   toggleThinking(): boolean {
     this.thinkingEnabled = !this.thinkingEnabled;
@@ -496,7 +496,7 @@ export class UnifiedModelManager {
   }
 
   /**
-   * Toggle interleaved thinking mode (Sonnet 4 only)
+   * Toggle interleaved thinking mode
    */
   toggleInterleavedThinking(): boolean {
     this.interleavedThinkingEnabled = !this.interleavedThinkingEnabled;
@@ -560,9 +560,9 @@ export class UnifiedModelManager {
    */
   private getAnthropicClient(): Anthropic {
     if (this.computerUseEnabled && this.anthropicComputerUse) {
-      return this.anthropicComputerUse; // 15 min timeout for computer use
+      return this.anthropicComputerUse; // 20 min timeout for computer use
     }
-    return this.anthropic!; // 5 min timeout for standard operations
+    return this.anthropic!; // 10 min timeout for standard operations
   }
 
   /**
@@ -761,7 +761,7 @@ export class UnifiedModelManager {
 
     const toolCalls: ToolCall[] = [];
 
-    // Extract all tool_use blocks - THIS IS THE FIX! 🔥
+    // Extract all tool_use blocks
     for (const contentBlock of response.content) {
       if (contentBlock.type === 'tool_use') {
         // Extract input parameters from tool call
@@ -853,7 +853,7 @@ export class UnifiedModelManager {
       ...(this.getModelConfig().supportsReasoning && {
         reasoning: {
           effort: this.reasoningEffort,
-          summary: 'detailed', // Reasoning models only support 'detailed', not 'concise'
+          summary: 'detailed', // Reasoning models only support 'detailed', not 'concise' //concise IS for 'computer-use-preview' model
         },
       }),
     } as any);

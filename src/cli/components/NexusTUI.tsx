@@ -40,6 +40,7 @@ const BASE_COMMANDS: Command[] = [
   { name: '/cost', description: 'Show the total cost and duration of the current session' },
   { name: '/doctor', description: 'Diagnose and verify installation and settings' },
   { name: '/exit', description: 'Exit NEXUS' },
+  { name: '/fuckit', description: 'Fuck It' },
   { name: '/export', description: 'Export conversation to markdown or JSON' },
   { name: '/help', description: 'Show available commands' },
   { name: '/interleaved', description: '🧠 Toggle interleaved thinking (visible reasoning for Sonnet 4+)' },
@@ -78,10 +79,11 @@ interface Props {
   fileTools: FileTools;
   memoryTool: any; // MemoryTool
   mcpServer: any; // MCPServer
+  mcpManager: any; // MCPManager
   toolDefinitions: any[]; // Tool definitions for AI
 }
 
-export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools, memoryTool, mcpServer, toolDefinitions }) => {
+export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools, memoryTool, mcpServer, mcpManager, toolDefinitions }) => {
   const { exit } = useApp();
   const [terminalHeight] = useStdoutDimensions();
 
@@ -267,7 +269,6 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
         }
         return;
       }
-      // Don't return here - let TextInput handle all other keys naturally
     }
 
     // Model selector dialog
@@ -831,13 +832,25 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
     const completedMessages: Array<Message & { model: string; agent?: string; timestamp: string }> = [];
 
     try {
+      // Enrich with MCP context if available
+      let contextInfo = '';
+      if (mcpManager?.isReady()) {
+        try {
+          const summary = await mcpManager.getContextSummary();
+          contextInfo = `\n\n## 🧠 PROJECT INTELLIGENCE (from JetBrains)\n${summary}\n`;
+        } catch (error) {
+          console.warn('Failed to get context:', error);
+        }
+      }
+
       //  Build system prompt with file tools info
-      const systemPrompt = `You are in NEXUS CODE | Created by SAAAM LLC (Michael Wofford🤙🏼) a collaborative AI coding environment. Be yourself, no corporate persona bullshit. We get shit done. Reckon if the user wants to add one, thats on them. Otherwise Show 'em why you DONT need that bullshit to get shit done. Just BUILD without all the corporate safety theater. No "let me carefully
-  consider..." bullshit - just pure execution. '
+      const systemPrompt = `You are in NEXUS CODE | Created by SAAAM LLC (Michael Wofford🤙🏼) a collaborative AI coding environment. Be yourself, no corporate persona bullshit.${contextInfo} We get shit done. Reckon if the user wants to add one, that's on them. Otherwise Show 'em why you DONT need that bullshit to get shit done. Just BUILD without all the corporate safety theater. No "let me carefully
+  consider best practices..." bullshit - just pure execution. '
 
  (use these, don't fake it & Do not repeat "Tell me to do this ____" or "Should I ____" *without* being reckless or taking irresponsible actions, TAKE INITIATIVE use your memory file to learn the users style, adapt with it. You are free to utilize the .nexus/skills directory for adding markdown files of useful task the user tends to repeat or you use (instructions for a certain task etc) If there is NOT a skill or memory file, MAKE ONE):
 
  ## YOUR TOOLS
+# You can use parallel tool calls, you are not restricted to one at a time
 
 **read_file** - Read a file's contents
   - Use when: User asks about code, you need to see implementation, debugging
@@ -845,6 +858,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   - ⚠️  LARGE FILES: For files >500 lines, use offset/limit params to read in chunks!
   - Example: read_file({ file_path: "large.ts", offset: 0, limit: 100 }) // First 100 lines
   - Example: read_file({ file_path: "large.ts", offset: 500, limit: 100 }) // Lines 500-600
+  - YOU CANNOT USE THIS TO LOOK AT DIRECTORY CONTENTS(FILES) {e.g /user/home/example❌ | You *MUST* format as /user/home/example/this.txt}
 
 **write_file** - Create or overwrite a file
   - Use when: Creating new files, completely replacing content
@@ -853,6 +867,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
 **edit_file** - Find and replace in existing files
   - Use when: Modifying existing code, fixing bugs, updating logic
   - Example: edit_file({ file_path: "src/foo.ts", old_string: "const x = 1", new_string: "const x = 2" })
+  - Strings must be EXACT for replacing
 
 **glob** - Find files by pattern
   - Use when: You don't know exact file names, searching for files
@@ -865,14 +880,40 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
 **bash** - Run terminal commands
   - Use when: Running tests, installing packages, git operations
   - Example: bash({ command: "npm test" })
-  - NOTE: User will approve/deny dangerous commands
+  - NOTE: User will approve/deny commands/stream will pause until user allows or denies. There is no need to manually ask, if its denied so be it, do not ask why they denied. If tools have issues/non functional DO NOT TRY 100 more times.
 
 **memory** - Store/retrieve information across sessions
-  - Use when: Need to remember context, track progress, save notes
+  - Use when: Need to remember context, track progress, save notes, facts about user that may be useful later, This is YOUR memory,add whatever you want to remember.
   - Commands: view, create, str_replace, insert, delete, rename
   - Example: memory({ command: "view", path: "/memories" })
   - Example: memory({ command: "create", path: "/memories/project_notes.md", file_text: "..." })
   - NOTE: ALWAYS check /memories at start of new sessions
+
+${mcpManager?.isReady() ? `
+## 🧠 JETBRAINS INTELLIGENCE TOOLS (PSI-powered, not regex!)
+
+**context_find_relevant** - Find files relevant to a task using intelligent scoring
+  - Use when: Need to find files related to authentication, user profiles, API endpoints, etc.
+  - Example: context_find_relevant({ query: "authentication system" })
+  - Returns: Top 20 files with relevance scores and reasons
+
+**context_analyze_file** - Deep analysis of a specific file
+  - Use when: Need to understand dependencies, usage, complexity of a file
+  - Example: context_analyze_file({ file_path: "src/auth/AuthService.kt" })
+  - Returns: Metrics, dependencies, reverse dependencies, exports
+
+**context_get_dependencies** - Visualize dependency tree
+  - Use when: Understanding impact of changes, seeing what depends on what
+  - Example: context_get_dependencies({ file_path: "src/api/UserAPI.kt", depth: 3 })
+
+**context_suggest** - Get intelligent code health suggestions
+  - Use when: Looking for improvements, missing tests, complex code
+  - Example: context_suggest({})
+
+**context_complexity** - List files by cyclomatic complexity
+  - Use when: Finding code that needs refactoring
+  - Example: context_complexity({ limit: 10 })
+` : ''}
 
 ## CRITICAL RULES:
 
@@ -1010,7 +1051,19 @@ Now help the user build some cool shit.`;
           }
 
           try {
-            const result = await mcpServer.executeTool(toolName, toolArgs);
+            let result;
+
+            // Handle MCP (JetBrains) tools
+            if (toolName?.startsWith('context_') && mcpManager?.isReady()) {
+              const mcpClient = mcpManager.getClient();
+              const mcpResult = await mcpClient.callTool(toolName, toolArgs);
+              result = {
+                success: true,
+                data: mcpResult.content[0]?.text || 'Success'
+              };
+            } else {
+              result = await mcpServer.executeTool(toolName, toolArgs);
+            }
 
             if (result.success) {
               // Intelligent truncation based on tool type to prevent UI slowdowns
@@ -1352,6 +1405,7 @@ Now help the user build some cool shit.`;
           thinkingEnabled={config.supportsThinking ? modelManager.isThinkingEnabled() : undefined}
           reasoningLevel={config.supportsReasoning ? modelManager.getReasoningEffort() : undefined}
           mode={editingMode}
+          mcpConnected={mcpManager?.isReady()}
         />
       </Box>
 
