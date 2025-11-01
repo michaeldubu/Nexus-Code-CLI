@@ -118,9 +118,6 @@ export class NexusFileSystem {
         'git status',
         'git diff',
         'git log',
-        'npm',
-        'node',
-        'python',
       ],
       deniedCommands: [
         'rm -rf',
@@ -128,7 +125,7 @@ export class NexusFileSystem {
         'chmod 777',
         'dd',
       ],
-      defaultModel: 'claude-sonnet-4-5-20250929',
+      defaultModel: 'claude-haiku-4-5-20250514',
       modelPreferences: {
         'claude-sonnet-4-5-20250929': {
           temperature: 1.0,
@@ -197,7 +194,7 @@ export class NexusFileSystem {
       return session;
     }
 
-    return this.createSession(model || 'claude-sonnet-4-5-20250929');
+    return this.createSession(model || 'claude-haiku-4-5-20250514');
   }
 
   /**

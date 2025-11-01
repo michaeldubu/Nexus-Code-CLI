@@ -248,15 +248,14 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
           // Render line with cursor if this is the current line
           if (idx === currentLine) {
             const beforeCursor = line.slice(0, currentColumn);
-            const atCursor = line[currentColumn] || ' ';
-            const afterCursor = line.slice(currentColumn + 1);
+            const afterCursor = line.slice(currentColumn);
 
             return (
               <Box key={idx}>
                 <Text color="orange" bold>{idx === 0 ? '> ' : '  '}</Text>
                 <Text color="white">
                   {beforeCursor}
-                  <Text backgroundColor="orange" color="black">{atCursor}</Text>
+                  <Text color="green" bold>▋</Text>
                   {afterCursor}
                 </Text>
               </Box>

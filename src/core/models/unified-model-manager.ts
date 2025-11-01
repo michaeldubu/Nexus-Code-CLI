@@ -11,16 +11,16 @@ import { mcpToAnthropicTools, mcpToOpenAITools, mcpToGoogleTools } from '../util
 import { ContextWindowManager } from '../utils/context-manager.js';
 import { enablePromptCaching } from '../utils/prompt-caching.js';
 
-export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'ollama';
+export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'ollama'; //TODO add ollama
 
 export interface ModelConfig {
   id: string;
   name: string;
   provider: ModelProvider;
-  supportsThinking?: boolean; // Extended thinking (budget_tokens)
-  supportsInterleavedThinking?: boolean; // NEW: Interleaved thinking (Sonnet 4 only)
-  supportsComputerUse?: boolean; // NEW: Computer use capability
-  supportsPromptCaching?: boolean; // NEW: Prompt caching
+  supportsThinking?: boolean; // Extended thinking
+  supportsInterleavedThinking?: boolean; // Interleaved thinking (Sonnet 4/4.5 only)
+  supportsComputerUse?: boolean; // Computer use capability
+  supportsPromptCaching?: boolean; // Prompt caching
   supportsReasoning?: boolean;
   supportsVision?: boolean;
   reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
@@ -82,7 +82,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     provider: 'openai',
     supportsReasoning: true,
     reasoningEffort: 'high',
-    maxTokens: 16384,
+    maxTokens: 32768,
     contextWindow: 128000,
   },
   'gpt-5-pro': {
@@ -147,7 +147,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'gpt-4o',
     name: 'GPT-4o',
     provider: 'openai',
-    supportsReasoning: false,
+    supportsReasoning: true,
     supportsVision: true,
     maxTokens: 16384,
     contextWindow: 128000,
@@ -156,7 +156,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'gpt-4o-mini',
     name: 'GPT-4o Mini',
     provider: 'openai',
-    supportsReasoning: false,
+    supportsReasoning: true,
     supportsVision: true,
     maxTokens: 16384,
     contextWindow: 128000,
@@ -165,7 +165,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'gpt-4o-search-preview',
     name: 'GPT-4o Search',
     provider: 'openai',
-    supportsReasoning: false,
+    supportsReasoning: true,
     supportsVision: true,
     maxTokens: 16384,
     contextWindow: 128000,
@@ -254,7 +254,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
   },
   'gemini-exp-1206': {
     id: 'gemini-exp-1206',
-    name: 'Gemini 2.0 Pro (Exp)',
+    name: 'Gemini 2.0 Pro',
     provider: 'google',
     supportsVision: true,
     supportsReasoning: true,
@@ -272,7 +272,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
   },
 };
 
-// Content block types (matching Claude Code's format)
+// Content block types
 export interface TextContentBlock {
   type: 'text';
   text: string;
@@ -340,15 +340,15 @@ export class UnifiedModelManager {
   private google?: GoogleGenerativeAI;
   private currentModel: string;
   private thinkingEnabled: boolean = true;
-  private interleavedThinkingEnabled: boolean = false; // NEW: Interleaved thinking
-  private computerUseEnabled: boolean = false; // NEW: Computer use capability
-  private promptCachingEnabled: boolean = true; // NEW: Prompt caching (enabled by default)
-  private skillsEnabled: boolean = false; // NEW: Agent Skills support
+  private interleavedThinkingEnabled: boolean = true; // Interleaved thinking
+  private computerUseEnabled: boolean = false; // Computer use capability
+  private promptCachingEnabled: boolean = true; //Prompt caching (enabled by default)
+  private skillsEnabled: boolean = true; // Agent Skills support
   private reasoningEffort: 'minimal' | 'low' | 'medium' | 'high' = 'high';
-  private verbosity: 'low' | 'medium' | 'high' = 'high'; // GPT-5 verbosity control
+  private verbosity: 'low' | 'high' = 'high'; // GPT-5 verbosity control (ONLY low/high per API docs)
   private lastResponseId?: string;
-  private conversationHistory: Message[] = []; // NEW: For rolling context window management
-  private contextManager?: ContextWindowManager; // NEW: Context window manager
+  private conversationHistory: Message[] = []; //rolling context window management
+  private contextManager?: ContextWindowManager; //Context window manager
 
   constructor(
     anthropicKey?: string,
@@ -390,8 +390,8 @@ export class UnifiedModelManager {
     if (defaultModel && this.isModelAvailable(defaultModel)) {
       this.currentModel = defaultModel;
     } else {
-      // Auto-select first available model
-      if (anthropicKey) this.currentModel = 'claude-sonnet-4-5-20250929';
+      // Auto-select first available model - DEFAULT TO HAIKU 4.5 (fast & cheap)
+      if (anthropicKey) this.currentModel = 'claude-haiku-4-5-20251001';
       else if (openaiKey) this.currentModel = 'gpt-5';
       else if (googleKey) this.currentModel = 'gemini-2.0-flash-exp';
       else this.currentModel = ''; // No keys provided
@@ -451,25 +451,21 @@ export class UnifiedModelManager {
     if (oldConfig && newConfig) {
       // Disable thinking if new model doesn't support it
       if (!newConfig.supportsThinking && this.thinkingEnabled) {
-        console.log('⚠️  Auto-disabling thinking (not supported by new model)');
         this.thinkingEnabled = false;
       }
 
       // Disable interleaved thinking if new model doesn't support it
       if (!newConfig.supportsInterleavedThinking && this.interleavedThinkingEnabled) {
-        console.log('⚠️  Auto-disabling interleaved thinking (not supported by new model)');
         this.interleavedThinkingEnabled = false;
       }
 
       // Disable reasoning if new model doesn't support it
       if (!newConfig.supportsReasoning && oldConfig.supportsReasoning) {
-        console.log('⚠️  Auto-disabling reasoning (not supported by new model)');
         // Don't reset reasoningEffort, just don't use it
       }
 
       // Disable computer use if new model doesn't support it
       if (!newConfig.supportsComputerUse && this.computerUseEnabled) {
-        console.log('⚠️  Auto-disabling computer use (not supported by new model)');
         this.computerUseEnabled = false;
       }
 
@@ -618,14 +614,14 @@ export class UnifiedModelManager {
   /**
    * Get verbosity level (GPT-5 specific)
    */
-  getVerbosity(): 'low' | 'medium' | 'high' {
+  getVerbosity(): 'low' | 'high' {
     return this.verbosity;
   }
 
   /**
    * Set verbosity level (GPT-5 specific)
    */
-  setVerbosity(level: 'low' | 'medium' | 'high'): void {
+  setVerbosity(level: 'low' | 'high'): void {
     this.verbosity = level;
   }
 
@@ -732,6 +728,17 @@ export class UnifiedModelManager {
     // Use appropriate client based on operation type
     const client = this.getAnthropicClient();
 
+    // Prepare tools array - include code_execution if skills are enabled
+    let anthropicTools: any[] = [];
+
+    // CRITICAL: Skills beta REQUIRES code_execution tool to be included
+    if (this.skillsEnabled) {
+      anthropicTools.push({
+        type: 'code_execution_20250825', // Special tool type matching beta header
+        name: 'code_execution',
+      });
+    }
+
     // Build request options (first parameter)
     const requestOptions: any = {
       model: this.currentModel,
@@ -739,6 +746,8 @@ export class UnifiedModelManager {
       temperature: 1.0,
       system: finalSystem,
       messages: finalMessages as any,
+      // Add code_execution tool if skills are enabled
+      ...(anthropicTools.length > 0 && { tools: anthropicTools }),
       ...(useThinking && !useInterleavedThinking && {
         thinking: {
           type: 'enabled',
@@ -840,10 +849,15 @@ export class UnifiedModelManager {
       temperature: 1.0,
       // Use previous_response_id for context chaining
       ...(this.lastResponseId && { previous_response_id: this.lastResponseId }),
+      // CRITICAL: Computer use requires truncation: 'auto'
+      ...(this.currentModel === 'computer-use-preview' && {
+        truncation: 'auto'
+      }),
       // Add tool support - convert MCP format to OpenAI Responses API format
-      // NOTE: Responses API is agentic by default, no parallel_tool_calls param needed
+      // NOTE: Responses API supports parallel tool calls
       ...(options.tools && options.tools.length > 0 && {
         tools: mcpToOpenAITools(options.tools),
+        parallel_tool_calls: true, // Enable parallel tool execution
       }),
       // GPT-5 verbosity control
       text: {
@@ -860,9 +874,10 @@ export class UnifiedModelManager {
 
     this.lastResponseId = response.id;
 
-    // Parse output
+    // Parse output - handle ALL output types
     let content = '';
     let reasoning = '';
+    const toolCalls: ToolCall[] = [];
 
     for (const item of response.output) {
       if (item.type === 'message') {
@@ -877,12 +892,44 @@ export class UnifiedModelManager {
             reasoning += summary.text + ' ';
           }
         }
+      } else if (item.type === 'function_call') {
+        // Handle function calls
+        toolCalls.push({
+          id: (item as any).call_id || (item as any).id,
+          type: 'function',
+          function: {
+            name: (item as any).name,
+            arguments: (item as any).arguments || '{}',
+          },
+        });
+      } else if (item.type === 'web_search_call') {
+        // Log web search (not a tool call we need to handle)
+        console.log('Web search performed:', (item as any).id);
+      } else if (item.type === 'file_search_call') {
+        // Log file search (not a tool call we need to handle)
+        console.log('File search performed:', (item as any).id);
+      } else if (item.type === 'mcp_call') {
+        // Handle MCP tool call
+        console.log('MCP call:', (item as any).name, (item as any).output);
+      } else if (item.type === 'mcp_approval_request') {
+        // Handle MCP approval request (would need user interaction)
+        console.log('MCP approval needed:', (item as any).name);
+      } else if (item.type === 'code_interpreter_call') {
+        // Log code execution
+        console.log('Code executed:', (item as any).id);
+      } else if (item.type === 'image_generation_call') {
+        // Log image generation
+        console.log('Image generated:', (item as any).id);
+      } else if (item.type === 'computer_call') {
+        // Log computer use action
+        console.log('Computer action:', (item as any).action);
       }
     }
 
     return {
       content: content.trim(),
       reasoning: reasoning.trim() || undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       usage: {
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens,
@@ -943,7 +990,7 @@ export class UnifiedModelManager {
     const useThinking = this.getModelConfig().supportsThinking && this.thinkingEnabled;
     const useInterleavedThinking = this.getModelConfig().supportsThinking && this.interleavedThinkingEnabled;
 
-    // Build extra headers for beta features
+    // Build headers for beta features
     const betaFeatures: string[] = [];
 
     if (useInterleavedThinking) {
@@ -965,6 +1012,17 @@ export class UnifiedModelManager {
     // Use streaming client (10 min timeout)
     const client = this.getAnthropicStreamingClient();
 
+    // Prepare tools array - include code_execution if skills are enabled
+    let anthropicTools: any[] = options.tools && options.tools.length > 0 ? mcpToAnthropicTools(options.tools) as any : [];
+
+    // CRITICAL: Skills beta REQUIRES code_execution tool to be included
+    if (this.skillsEnabled && !anthropicTools.find(t => t.name === 'code_execution')) {
+      anthropicTools.push({
+        type: 'code_execution_20250825', // Special tool type matching beta header
+        name: 'code_execution',
+      });
+    }
+
     // Build streaming request options (first parameter)
     const streamOptions: any = {
       model: this.currentModel,
@@ -972,8 +1030,8 @@ export class UnifiedModelManager {
       temperature: 1.0,
       system: systemPromptText,
       messages: formattedMessages as any,
-      // Add tool support - convert MCP format to Anthropic format
-      ...(options.tools && options.tools.length > 0 && { tools: mcpToAnthropicTools(options.tools) as any }),
+      // Add tool support
+      ...(anthropicTools.length > 0 && { tools: anthropicTools }),
       ...(useThinking && !useInterleavedThinking && {
         thinking: {
           type: 'enabled',
@@ -1061,43 +1119,33 @@ export class UnifiedModelManager {
       tools?: any[];
     }
   ): AsyncGenerator<StreamChunk> {
+    // SIMPLIFIED: Just like OpenAI's official example - use instructions instead of complex input handling
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
-    const systemPromptText = typeof systemPrompt === 'string' ? systemPrompt : contentToText(systemPrompt || '');
-    const userMessages = messages.filter(m => m.role !== 'system');
+    const instructions = typeof systemPrompt === 'string' ? systemPrompt : contentToText(systemPrompt || '');
 
-    const input: any[] = [];
-    if (systemPromptText) {
-      input.push({ role: 'developer', content: systemPromptText });
-    }
-
-    // CONVERT ContentBlock[] to string! 🔥
-    for (const msg of userMessages) {
-      if (msg.role === 'user') {
-        const textContent = typeof msg.content === 'string' ? msg.content : contentToText(msg.content);
-        input.push({
-          role: 'user',
-          content: [{ type: 'input_text', text: textContent }],
-        });
-      } else if (msg.role === 'assistant') {
-        const textContent = typeof msg.content === 'string' ? msg.content : contentToText(msg.content);
-        input.push({
-          role: 'assistant',
-          content: [{ type: 'output_text', text: textContent }],
-        });
-      }
-    }
+    // Convert messages to simple format
+    const input = messages
+      .filter(m => m.role !== 'system')
+      .map(m => ({
+        role: m.role,
+        content: typeof m.content === 'string' ? m.content : contentToText(m.content),
+      }));
 
     const stream = await this.openai.responses.create({
       model: this.currentModel,
-      input: input.length === 1 ? input[0].content[0].text : input,
+      input,
+      instructions,
       max_output_tokens: options.maxTokens || this.getModelConfig().maxTokens,
-      temperature: 1.0,
       stream: true,
       ...(this.lastResponseId && { previous_response_id: this.lastResponseId }),
+      // CRITICAL: Computer use requires truncation: 'auto'
+      ...(this.currentModel === 'computer-use-preview' && {
+        truncation: 'auto'
+      }),
       // Add tool support - convert MCP format to OpenAI Responses API format
-      // NOTE: Responses API is agentic by default, no parallel_tool_calls param needed
       ...(options.tools && options.tools.length > 0 && {
         tools: mcpToOpenAITools(options.tools),
+        parallel_tool_calls: true,
       }),
       // GPT-5 verbosity control
       text: {
@@ -1106,53 +1154,39 @@ export class UnifiedModelManager {
       ...(this.getModelConfig().supportsReasoning && {
         reasoning: {
           effort: this.reasoningEffort,
-          summary: 'detailed', // Reasoning models only support 'detailed', not 'concise'
+          summary: 'detailed',
         },
       }),
     } as any);
 
-    for await (const chunk of (stream as any)) {
-      // Log ALL events to debug stream issues
-      console.log('📨 OpenAI Event:', chunk.type);
+    // Handle GPT-5 streaming events correctly (from GPT-5 itself!)
+    for await (const event of (stream as any)) {
+      const eventType = (event as any).type;
 
-      if (chunk.type === 'response.output_text.delta') {
+      if (eventType === 'response.output_text.delta') {
+        // ✅ Text content from GPT-5
         yield {
           type: 'text',
-          content: (chunk as any).delta,
+          content: (event as any).delta?.text || ''
         };
-      } else if (chunk.type === 'response.reasoning_summary_text.delta') {
-        // Reasoning summary chunks
+      }
+      else if (eventType === 'response.reasoning_summary_text.delta') {
+        // ✅ Reasoning/thinking content
         yield {
           type: 'reasoning',
-          content: (chunk as any).delta,
+          content: (event as any).delta || ''
         };
-      } else if (chunk.type === 'response.reasoning.delta') {
-        // Full reasoning chunks (not just summary)
-        yield {
-          type: 'reasoning',
-          content: (chunk as any).delta || (chunk as any).content || '',
-        };
-      } else if (chunk.type === 'response.reasoning.done') {
-        // Reasoning finished - DON'T stop stream, just log
-        console.log('✅ Reasoning complete, continuing stream...');
-        // Don't yield anything, keep streaming
-      } else if (chunk.type === 'response.created') {
-        this.lastResponseId = (chunk as any).response.id;
-      } else if (chunk.type === 'response.completed') {
-        console.log('✅ Response complete');
-        yield { type: 'done' };
-      } else if (chunk.type && chunk.type.includes('reasoning')) {
-        // Catch any other reasoning-related events we might have missed
-        console.log('🔍 Unknown reasoning event type:', chunk.type, JSON.stringify(chunk));
-        if (chunk.delta || chunk.content) {
-          yield {
-            type: 'reasoning',
-            content: (chunk as any).delta || (chunk as any).content || '',
-          };
+      }
+      else if (eventType === 'response.function_call_arguments.delta') {
+        // TODO: accumulate arguments like Claude
+        continue;
+      }
+      else if (eventType === 'response.completed') {
+        // ✅ GPT-5 DONE EVENT (not response.done!)
+        if ((event as any).response?.id) {
+          this.lastResponseId = (event as any).response.id;
         }
-      } else {
-        // Log unhandled events
-        console.log('⚠️ Unhandled event type:', chunk.type);
+        yield { type: 'done' };
       }
     }
   }

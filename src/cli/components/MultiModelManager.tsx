@@ -123,7 +123,10 @@ export async function* streamMultiModelMessage(
       if (activeModels.length > 0) {
         const modelId = activeModels[0];
         const modelName = AVAILABLE_MODELS[modelId]?.name || modelId;
-        modelManager.setModel(modelId);
+        // Only switch if different model - prevents resetting thinking state
+        if (modelManager.getCurrentModel() !== modelId) {
+          modelManager.setModel(modelId);
+        }
 
         yield { type: 'start', modelId, modelName };
 
@@ -180,7 +183,10 @@ export async function* streamMultiModelMessage(
       let workingHistory = [...conversationHistory];
       for (const modelId of activeModels) {
         const modelName = AVAILABLE_MODELS[modelId]?.name || modelId;
-        modelManager.setModel(modelId);
+        // Only switch if different model - prevents resetting thinking state
+        if (modelManager.getCurrentModel() !== modelId) {
+          modelManager.setModel(modelId);
+        }
 
         yield { type: 'start', modelId, modelName };
 
@@ -242,7 +248,10 @@ export async function* streamMultiModelMessage(
       // Stream from all models (sequential processes one at a time, parallel would be more complex)
       for (const modelId of activeModels) {
         const modelName = AVAILABLE_MODELS[modelId]?.name || modelId;
-        modelManager.setModel(modelId);
+        // Only switch if different model - prevents resetting thinking state
+        if (modelManager.getCurrentModel() !== modelId) {
+          modelManager.setModel(modelId);
+        }
 
         yield { type: 'start', modelId, modelName };
 
@@ -412,33 +421,33 @@ export const AgentSelector: React.FC<AgentSelectorProps> = ({
  */
 export const QUICK_SWITCHES: Record<string, string> = {
   // Claude (one shortcut per model)
-  '/s': 'claude-sonnet-4-5-20250929',
-  '/s4': 'claude-sonnet-4-20250514',
-  '/o': 'claude-opus-4-1-20250805',
-  '/h': 'claude-haiku-4-5-20251001',
+  '/sonnet': 'claude-sonnet-4-5-20250929',
+  '/sonnet4': 'claude-sonnet-4-20250514',
+  '/opus': 'claude-opus-4-1-20250805',
+  '/haiku': 'claude-haiku-4-5-20251001',
 
   // OpenAI (all different models)
-  '/g5': 'gpt-5',
-  '/g5p': 'gpt-5-pro',
-  '/g5m': 'gpt-5-mini',
-  '/g5n': 'gpt-5-nano',
-  '/g5c': 'gpt-5-codex',
+  '/gpt5': 'gpt-5',
+  '/gpt5pro': 'gpt-5-pro',
+  '/gpt5mini': 'gpt-5-mini',
+  '/gpt5nano': 'gpt-5-nano',
+  '/gpt5codex': 'gpt-5-codex',
   '/codex': 'codex-mini-latest',
-  '/g4': 'gpt-4.1',
-  '/g4m': 'gpt-4.1-mini',
-  '/g4o': 'gpt-4o',
-  '/g4os': 'gpt-4o-search-preview',
-  '/g4om': 'gpt-4o-mini',
+  '/gpt41': 'gpt-4.1',
+  '/gpt41mini': 'gpt-4.1-mini',
+  '/gpt4o': 'gpt-4o',
+  '/gpt4osearch': 'gpt-4o-search-preview',
+  '/gpt4omini': 'gpt-4o-mini',
   '/o1': 'o1',
-  '/o1p': 'o1-pro',
+  '/o1pro': 'o1-pro',
   '/o3': 'o3',
-  '/o3p': 'o3-pro',
-  '/o3m': 'o3-mini',
-  '/o4': 'o4-mini',
-  '/o4dr': 'o4-mini-deep-research',
+  '/o3pro': 'o3-pro',
+  '/o3mini': 'o3-mini',
+  '/o4mini': 'o4-mini',
+  '/o4research': 'o4-mini-deep-research',
 
   // Gemini
-  '/gem': 'gemini-2-0-flash-thinking-exp-01-21',
+  '/gemini': 'gemini-2-0-flash-thinking-exp-01-21',
 };
 
 export function handleQuickSwitch(

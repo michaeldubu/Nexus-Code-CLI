@@ -49,14 +49,12 @@ async function main() {
   const memoryTool = new MemoryTool(process.cwd());
 
   // Initialize model manager with all available APIs
+  // Constructor automatically selects Haiku 4.5 as default (fast & cheap)
   const modelManager = new UnifiedModelManager(
     anthropicKey,
     openaiKey,
     googleKey
   );
-
-  // Set default model (Sonnet 4.5)
-  modelManager.setModel('claude-sonnet-4-5-20250929');
 
   // Initialize MCP Server and register file tools + memory
   const mcpServer = new MCPServer();
@@ -91,9 +89,17 @@ async function main() {
   });
 
   // Initialize MCP Manager and try to connect to JetBrains plugin
-  // Silent by default - only shows success message if plugin available
   const mcpManager = getMCPManager();
-  const mcpConnected = await mcpManager.autoConnect();
+  let mcpConnected = false;
+  try {
+    mcpConnected = await mcpManager.autoConnect();
+    if (mcpConnected) {
+      console.log('✅ Connected to JetBrains plugin!');
+      console.log(`   Project: ${mcpManager.getCurrentInstance()?.projectName}`);
+    }
+  } catch (error) {
+    console.warn('⚠️  JetBrains plugin not available (intelligence features disabled)');
+  }
 
   // Get tool definitions for passing to AI models
   const toolDefinitions = [

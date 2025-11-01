@@ -1,6 +1,5 @@
 /**
  * File Tools - Read, Write, Edit, Bash, Glob, Grep
- * Mimics Claude Code's file access capabilities
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'fs';
@@ -13,7 +12,7 @@ import chalk from 'chalk';
 const execAsync = promisify(exec);
 
 /**
- * Log tool usage (like Claude Code)
+ * Log tool usage
  */
 function logToolCall(toolName: string, params: Record<string, any>): void {
   const paramStr = Object.entries(params)
@@ -61,7 +60,7 @@ export class FileTools {
   }
 
   /**
-   * Set bash approval callback - THIS FIXES THE APPROVAL DIALOG! 🔥
+   * Set bash approval callback
    */
   setBashApprovalCallback(callback: (command: string) => Promise<boolean>): void {
     this.bashApprovalCallback = callback;

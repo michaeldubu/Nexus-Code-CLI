@@ -12,21 +12,15 @@ export class MCPManager {
   private autoReconnect = true;
   private connectionAttempts = 0;
   private maxAttempts = 3;
-  private verbose = false; // Silent by default - no spam on startup
 
   /**
    * Auto-connect to best available plugin instance
-   * @param verbose - Show connection logs (default: false for silent operation)
    */
-  async autoConnect(verbose = false): Promise<boolean> {
-    this.verbose = verbose;
+  async autoConnect(): Promise<boolean> {
     const instance = getBestPluginInstance();
 
     if (!instance) {
-      if (this.verbose) {
-        console.log('⚠️  No NEXUS plugin instances found');
-        console.log('   Open a project in IntelliJ with the NEXUS plugin installed');
-      }
+      // Silently fail - no console spam
       return false;
     }
 
@@ -40,11 +34,7 @@ export class MCPManager {
     try {
       this.currentInstance = instance;
 
-      if (this.verbose) {
-        console.log(`🔌 Connecting to NEXUS plugin...`);
-        console.log(`   Project: ${instance.projectName}`);
-        console.log(`   Path: ${instance.projectPath}`);
-      }
+      // Silently connect - no console spam
 
       // Create WebSocket with auth headers
       const ws = new WebSocket(getWebSocketUrl(instance), {
@@ -89,22 +79,17 @@ export class MCPManager {
       // Start ping
       this.client.startPingInterval(30000);
 
-      // Always show success - this is good news!
-      console.log(`✅ Connected to NEXUS plugin (${instance.projectName})`);
+      // Silently succeeded - no console spam
 
       this.connectionAttempts = 0;
       return true;
 
     } catch (error: any) {
-      if (this.verbose) {
-        console.error(`❌ Failed to connect: ${error.message}`);
-      }
+      // Silently fail - no console spam
 
       this.connectionAttempts++;
       if (this.connectionAttempts < this.maxAttempts && this.autoReconnect) {
-        if (this.verbose) {
-          console.log(`   Retrying... (${this.connectionAttempts}/${this.maxAttempts})`);
-        }
+        // Retry silently
         await new Promise(resolve => setTimeout(resolve, 2000));
         return await this.connectToInstance(instance);
       }

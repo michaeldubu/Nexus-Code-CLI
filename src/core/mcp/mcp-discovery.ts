@@ -27,7 +27,7 @@ export function discoverPluginInstances(): PluginInstance[] {
     join(homedir(), 'Documents'),
     join(homedir(), 'Projects'),
     join(homedir(), 'dev'),
-    join(homedir(), 'saaam_dev'),
+    // Removed hardcoded saaam_dev - let discovery find it naturally
   ];
 
   for (const searchPath of searchPaths) {

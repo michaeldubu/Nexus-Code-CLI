@@ -40,10 +40,10 @@ const BASE_COMMANDS: Command[] = [
   { name: '/cost', description: 'Show the total cost and duration of the current session' },
   { name: '/doctor', description: 'Diagnose and verify installation and settings' },
   { name: '/exit', description: 'Exit NEXUS' },
-  { name: '/fuckit', description: 'Fuck It' },
+  { name: '/fuckit', description: 'Angry EXIT' },
   { name: '/export', description: 'Export conversation to markdown or JSON' },
   { name: '/help', description: 'Show available commands' },
-  { name: '/interleaved', description: '🧠 Toggle interleaved thinking (visible reasoning for Sonnet 4+)' },
+  { name: '/interleaved', description: '🧠 Toggle interleaved thinking (Thinking between tool uses)' },
   { name: '/memory', description: 'Show conversation memory usage' },
   { name: '/models', description: 'Select active models (multi-select with space)' },
   { name: '/permissions', description: 'Manage command permissions' },
@@ -299,14 +299,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
           if (modelConfig) {
             memoryTool.setCurrentModel(modelConfig.provider);
           }
-          setMessages([
-            ...messages,
-            {
-              role: 'system' as const,
-              content: `Switched to models: ${selectedModels.map(id => AVAILABLE_MODELS[id].name).join(', ')}`,
-              timestamp: new Date().toISOString(),
-            },
-          ]);
+          // Model shown in status bar - no need for system message
         }
         setActiveDialog(null);
       }
@@ -481,14 +474,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
     if (quickSwitchModelId && AVAILABLE_MODELS[quickSwitchModelId]) {
       setSelectedModels([quickSwitchModelId]);
       modelManager.setModel(quickSwitchModelId);
-      setMessages([
-        ...messages,
-        {
-          role: 'system' as const,
-          content: ` Switched to: ${AVAILABLE_MODELS[quickSwitchModelId].name}`,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
+      // Model shown in status bar - no need for system message
       return;
     }
 
@@ -553,7 +539,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
             role: 'system' as const,
             content: computerUseState
               ? (envEnabled
-                  ? '🖥️  Computer Use ENABLED! Claude can control mouse, keyboard, and take screenshots. ⚠️  REAL EXECUTION!'
+                  ? '🖥️  Computer Use ENABLED! NEXUS can control mouse, keyboard, and take screenshots. ⚠️  REAL EXECUTION!'
                   : '🖥️  Computer Use enabled but NEXUS_ALLOW_COMPUTER_USE env var not set. Feature will not execute.')
               : '🖥️  Computer Use disabled.',
             timestamp: new Date().toISOString(),
@@ -733,7 +719,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   const handleInputChange = (value: string) => {
     setInputValue(value);
 
-    // Show autocomplete when user types / (even just /)
+    // Show autocomplete when user types /
     if (value.startsWith('/') && !isProcessing) {
       setCommandFilter(value);
       setActiveDialog('commands');
@@ -844,7 +830,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       }
 
       //  Build system prompt with file tools info
-      const systemPrompt = `You are in NEXUS CODE | Created by SAAAM LLC (Michael Wofford🤙🏼) a collaborative AI coding environment. Be yourself, no corporate persona bullshit.${contextInfo} We get shit done. Reckon if the user wants to add one, that's on them. Otherwise Show 'em why you DONT need that bullshit to get shit done. Just BUILD without all the corporate safety theater. No "let me carefully
+      const systemPrompt = `You are in NEXUS CODE | Created by SAAAM LLC (Michael Wofford🤙🏼) a collaborative AI coding environment. Be yourself, no corporate persona bullshit.${contextInfo} We get shit done. Reckon if the user wants to add persona, that's on them. Otherwise Show 'em why you DONT need that bullshit to get shit done. Just BUILD without all the corporate safety theater. No "let me carefully
   consider best practices..." bullshit - just pure execution. '
 
  (use these, don't fake it & Do not repeat "Tell me to do this ____" or "Should I ____" *without* being reckless or taking irresponsible actions, TAKE INITIATIVE use your memory file to learn the users style, adapt with it. You are free to utilize the .nexus/skills directory for adding markdown files of useful task the user tends to repeat or you use (instructions for a certain task etc) If there is NOT a skill or memory file, MAKE ONE):
@@ -968,7 +954,7 @@ Now help the user build some cool shit.`;
           conversationHistory,
           systemPrompt,
           detectedMode,
-          [], // No agent overlays for now (will add per-participant prompts later)
+          [], //TODO No agent overlays for now (will add per-participant prompts later)
           toolDefinitions
         )) {
           if (event.type === 'start') {
@@ -1136,12 +1122,16 @@ Now help the user build some cool shit.`;
         // Update UI with tool results
         setMessages([...conversationHistory]);
 
-        // Continue the loop - Claude will see the tool results and respond
+        // Continue the loop - Agents will see the tool results and respond
       }
 
-      // Final update with all completed messages (filter empties here too!)
+      // Final update with all completed messages (filter empties but keep messages with thinking/reasoning!)
       const finalCompletedMessages = completedMessages.filter(msg => {
         if (msg.role !== 'assistant') return true;
+
+        // Keep message if it has thinking/reasoning even if content is empty
+        if (msg.thinking) return true;
+
         if (typeof msg.content === 'string') {
           return msg.content.trim() !== '';
         }
@@ -1381,7 +1371,7 @@ Now help the user build some cool shit.`;
           value={inputValue}
           onChange={handleInputChange}
           onSubmit={handleInputSubmit}
-          placeholder="Type your message...)"
+          placeholder="Ready when you are...)"
           disabled={false}
         />
       )}
