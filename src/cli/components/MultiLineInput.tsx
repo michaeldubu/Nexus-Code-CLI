@@ -45,6 +45,12 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
     (input, key) => {
       if (disabled) return;
 
+      // DEBUG: Log raw input to see what's coming through
+      if (input || Object.keys(key).some(k => key[k])) {
+        const activeKeys = Object.keys(key).filter(k => key[k]);
+        console.log(`🔍 RAW INPUT | input: "${input}" (charCode: ${input?.charCodeAt(0) || 'none'}) | keys: [${activeKeys.join(', ')}]`);
+      }
+
       // Check for newline character (Shift+Enter produces '\n' in some terminals)
       if (input === '\n' || (input === '\r' && key.shift)) {
         const newValue =
@@ -72,9 +78,11 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
 
       // Backspace - delete character BEFORE cursor
       if (key.backspace) {
+        console.log(`🔍 BACKSPACE detected | cursorOffset: ${cursorOffset} | value: "${value}"`);
         if (cursorOffset > 0) {
           const newValue =
             value.slice(0, cursorOffset - 1) + value.slice(cursorOffset);
+          console.log(`🔍 BACKSPACE result | newValue: "${newValue}"`);
           onChange(newValue);
           setCursorOffset(cursorOffset - 1);
         }
@@ -83,9 +91,11 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
 
       // Delete - delete character AFTER cursor (forward delete)
       if (key.delete) {
+        console.log(`🔍 DELETE detected | cursorOffset: ${cursorOffset} | value: "${value}"`);
         if (cursorOffset < value.length) {
           const newValue =
             value.slice(0, cursorOffset) + value.slice(cursorOffset + 1);
+          console.log(`🔍 DELETE result | newValue: "${newValue}"`);
           onChange(newValue);
           // Cursor stays in same position
         }
@@ -94,11 +104,13 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
 
       // Arrow keys for cursor movement
       if (key.leftArrow && cursorOffset > 0) {
+        console.log(`🔍 LEFT ARROW | cursorOffset: ${cursorOffset} -> ${cursorOffset - 1}`);
         setCursorOffset(cursorOffset - 1);
         return;
       }
 
       if (key.rightArrow && cursorOffset < value.length) {
+        console.log(`🔍 RIGHT ARROW | cursorOffset: ${cursorOffset} -> ${cursorOffset + 1}`);
         setCursorOffset(cursorOffset + 1);
         return;
       }
