@@ -3,13 +3,23 @@
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'fs';
-import { exec } from 'child_process';
+import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { glob } from 'glob';
 import { join, dirname } from 'path';
 import chalk from 'chalk';
+import { randomUUID } from 'crypto';
 
 const execAsync = promisify(exec);
+
+interface BackgroundShell {
+  id: string;
+  command: string;
+  process: ChildProcess;
+  output: string[];
+  startTime: number;
+  status: 'running' | 'completed' | 'error';
+}
 
 /**
  * Log tool usage
@@ -48,6 +58,7 @@ export class FileTools {
   private deniedCommands: string[] = [];
   private verboseMode: boolean = true; // Show tool calls by default
   private bashApprovalCallback?: (command: string) => Promise<boolean>;
+  private backgroundShells: Map<string, BackgroundShell> = new Map();
 
   // 🔥 File permissions system
   private allowedPaths: string[] = [];
@@ -504,7 +515,7 @@ export class FileTools {
     try {
       // Check if command is approved
       if (!this.isCommandApproved(command)) {
-        // Request approval through callback - THE FIX! 🔥
+        // Request approval through callback
         if (this.bashApprovalCallback) {
           const approved = await this.bashApprovalCallback(command);
           if (!approved) {
@@ -513,9 +524,7 @@ export class FileTools {
               error: `Command denied by user: ${command}`,
             };
           }
-          // Command was approved, continue execution
         } else {
-          // No callback, fall back to error
           return {
             success: false,
             error: `Command not pre-approved: ${command}. Add to approved list with /permissions`,
@@ -523,6 +532,45 @@ export class FileTools {
         }
       }
 
+      // Background execution
+      if (options.background) {
+        const shellId = randomUUID();
+        const child = spawn('bash', ['-c', command], {
+          cwd: this.workingDirectory,
+          detached: false,
+        });
+
+        const shell: BackgroundShell = {
+          id: shellId,
+          command,
+          process: child,
+          output: [],
+          startTime: Date.now(),
+          status: 'running',
+        };
+
+        // Capture output
+        child.stdout?.on('data', (data) => {
+          shell.output.push(data.toString());
+        });
+
+        child.stderr?.on('data', (data) => {
+          shell.output.push(`STDERR: ${data.toString()}`);
+        });
+
+        child.on('close', (code) => {
+          shell.status = code === 0 ? 'completed' : 'error';
+        });
+
+        this.backgroundShells.set(shellId, shell);
+
+        return {
+          success: true,
+          output: `Background shell started with ID: ${shellId}\nUse bash_output tool to read output.`,
+        };
+      }
+
+      // Foreground execution (existing behavior)
       const { stdout, stderr } = await execAsync(command, {
         cwd: this.workingDirectory,
         timeout: options.timeout || 120000, // 2 min default
@@ -539,6 +587,89 @@ export class FileTools {
         error: error.message || error.stderr,
       };
     }
+  }
+
+  /**
+   * Get output from background shell
+   */
+  async bashOutput(shellId: string, filter?: string): Promise<ToolResult> {
+    if (this.verboseMode) {
+      logToolCall('BashOutput', { shellId, filter });
+    }
+
+    const shell = this.backgroundShells.get(shellId);
+    if (!shell) {
+      return {
+        success: false,
+        error: `No background shell found with ID: ${shellId}`,
+      };
+    }
+
+    let output = shell.output.join('');
+
+    // Apply filter if provided
+    if (filter) {
+      try {
+        const regex = new RegExp(filter);
+        const lines = output.split('\n');
+        output = lines.filter(line => regex.test(line)).join('\n');
+      } catch (error: any) {
+        return {
+          success: false,
+          error: `Invalid regex filter: ${error.message}`,
+        };
+      }
+    }
+
+    // Clear the output buffer after reading
+    shell.output = [];
+
+    return {
+      success: true,
+      output: `Shell ${shellId} (${shell.status}):\n${output}`,
+    };
+  }
+
+  /**
+   * Kill background shell
+   */
+  async killShell(shellId: string): Promise<ToolResult> {
+    if (this.verboseMode) {
+      logToolCall('KillShell', { shellId });
+    }
+
+    const shell = this.backgroundShells.get(shellId);
+    if (!shell) {
+      return {
+        success: false,
+        error: `No background shell found with ID: ${shellId}`,
+      };
+    }
+
+    try {
+      shell.process.kill('SIGTERM');
+      this.backgroundShells.delete(shellId);
+
+      return {
+        success: true,
+        output: `Killed background shell ${shellId}`,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to kill shell: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * List all background shells
+   */
+  listBackgroundShells(): BackgroundShell[] {
+    return Array.from(this.backgroundShells.values()).map(shell => ({
+      ...shell,
+      process: undefined as any, // Don't expose the process object
+    }));
   }
 
   /**

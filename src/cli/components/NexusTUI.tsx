@@ -8,6 +8,7 @@ import { useStdoutDimensions } from '../../hooks/useStdoutDimensions.js';
 import { UnifiedModelManager, AVAILABLE_MODELS, Message } from '../../core/models/unified-model-manager.js';
 import { NexusFileSystem } from '../../core/filesystem/nexus-fs.js';
 import { FileTools } from '../../core/tools/file-tools.js';
+import { estimateConversationTokens, compressConversationHistory } from '../../core/utils/context-manager.js';
 import { CommandAutocomplete, Command } from './CommandAutocomplete.js';
 import { ModelSelector } from './ModelSelector.js';
 import { PermissionsDialog } from './PermissionsDialog.js';
@@ -91,6 +92,8 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   const [showBoot, setShowBoot] = useState(true);
   const [messages, setMessages] = useState<Array<Message & { model?: string; agent?: string; timestamp?: string }>>([]);
   const [inputValue, setInputValue] = useState('');
+  const [inputHistory, setInputHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
   const [activeDialog, setActiveDialog] = useState<DialogType>(null);
   const [commandFilter, setCommandFilter] = useState('');
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
@@ -620,12 +623,27 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
 
       case '/context':
         const msgCount = messages.length;
-        const estimatedTokens = Math.round(messages.reduce((sum, msg) => sum + (msg.content?.length || 0) / 4, 0));
+        const estimatedTokens = estimateConversationTokens(messages);
+        const currentModel = AVAILABLE_MODELS[selectedModels[0]];
+        const contextWindow = currentModel?.contextWindow || 200000;
+        const utilization = ((estimatedTokens / contextWindow) * 100).toFixed(1);
+
+        //  Simple colored bar visualization
+        const barWidth = 40;
+        const filledWidth = Math.round((estimatedTokens / contextWindow) * barWidth);
+        const emptyWidth = barWidth - filledWidth;
+        const bar = '█'.repeat(filledWidth) + '░'.repeat(emptyWidth);
+
+        // Color based on utilization
+        let color = 'green';
+        if (estimatedTokens > contextWindow * 0.9) color = 'red';
+        else if (estimatedTokens > contextWindow * 0.7) color = 'yellow';
+
         setMessages([
           ...messages,
           {
             role: 'system' as const,
-            content: `💾 Memory Usage:\n  Messages: ${msgCount}\n  Estimated tokens: ~${estimatedTokens}`,
+            content: `💾 Context Window Usage:\n\n[${bar}] ${utilization}%\n\n  Messages: ${msgCount}\n  Tokens: ~${estimatedTokens.toLocaleString()} / ${contextWindow.toLocaleString()}\n  Model: ${currentModel?.name}\n\n${utilization > '90' ? '⚠️  Context nearly full! Use /compact to compress.' : utilization > '70' ? '⚡ Consider using /compact soon' : '✅ Plenty of context available'}`,
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -665,15 +683,31 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
         }
         break;
 
-      case '/context':
-        setMessages([
-          ...messages,
-          {
-            role: 'system' as const,
-            content: `🎨 Context visualization would appear here\n  Working on implementation...`,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
+      case '/compact':
+        // Compress conversation history
+        const beforeTokens = estimateConversationTokens(messages);
+        const beforeCount = messages.length;
+        const model = AVAILABLE_MODELS[selectedModels[0]];
+
+        compressConversationHistory(messages, {
+          maxTokens: model?.contextWindow || 200000,
+          targetTokens: Math.round((model?.contextWindow || 200000) * 0.5), // Compress to 50%
+          compressionThreshold: 0.7, // Trigger at 70% full
+        }).then(compressedMessages => {
+          const afterTokens = estimateConversationTokens(compressedMessages);
+          const afterCount = compressedMessages.length;
+          const savedTokens = beforeTokens - afterTokens;
+          const savedPercent = ((savedTokens / beforeTokens) * 100).toFixed(1);
+
+          setMessages([
+            ...compressedMessages,
+            {
+              role: 'system' as const,
+              content: `🗜️ Context Compressed!\n\n  Messages: ${beforeCount} → ${afterCount}\n  Tokens: ~${beforeTokens.toLocaleString()} → ~${afterTokens.toLocaleString()}\n  Saved: ${savedPercent}% (${savedTokens.toLocaleString()} tokens)\n\n  Old context summarized. Recent messages preserved.`,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        });
         break;
 
       case '/cost':
@@ -696,6 +730,34 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
             timestamp: new Date().toISOString(),
           },
         ]);
+        break;
+
+      case '/bashes':
+        // List and manage background shells
+        const shells = fileTools.listBackgroundShells();
+        if (shells.length === 0) {
+          setMessages([
+            ...messages,
+            {
+              role: 'system' as const,
+              content: '🐚 No background shells currently running',
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        } else {
+          const shellList = shells.map((shell, idx) =>
+            `${idx + 1}. [${shell.status}] ${shell.id}\n   Command: ${shell.command}\n   Running for: ${Math.floor((Date.now() - shell.startTime) / 1000)}s`
+          ).join('\n\n');
+
+          setMessages([
+            ...messages,
+            {
+              role: 'system' as const,
+              content: `🐚 Background Shells (${shells.length}):\n\n${shellList}\n\nUse kill_shell tool with the shell ID to terminate.`,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
         break;
 
       case '/exit':
@@ -738,6 +800,12 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       if (!value.trim()) return;
 
       const trimmed = value.trim();
+
+      // Add to history (don't add duplicates if same as last entry)
+      if (trimmed && (inputHistory.length === 0 || inputHistory[inputHistory.length - 1] !== trimmed)) {
+        setInputHistory(prev => [...prev, trimmed]);
+      }
+      setHistoryIndex(-1); // Reset history navigation
 
       // Handle commands - close autocomplete first
       if (trimmed.startsWith('/')) {
@@ -1373,6 +1441,9 @@ Now help the user build some cool shit.`;
           onSubmit={handleInputSubmit}
           placeholder="Ready when you are...)"
           disabled={false}
+          history={inputHistory}
+          historyIndex={historyIndex}
+          onHistoryChange={setHistoryIndex}
         />
       )}
 

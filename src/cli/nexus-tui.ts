@@ -10,10 +10,12 @@ import { render } from 'ink';
 import { NexusFileSystem } from '../core/filesystem/nexus-fs.js';
 import { FileTools } from '../core/tools/file-tools.js';
 import { MemoryTool } from '../core/tools/memory-tool.js';
+import { WebTools } from '../core/tools/web-tools.js';
 import { UnifiedModelManager } from '../core/models/unified-model-manager.js';
 import { NexusTUI } from './components/NexusTUI.js';
 import { MCPServer } from '../core/mcp/client.js';
 import { registerFileTools, getFileToolsDefinitions } from '../core/mcp/file-tools-mcp.js';
+import { registerWebTools, getWebToolsDefinitions } from '../core/mcp/web-tools-mcp.js';
 import { getMCPManager } from '../core/mcp/mcp-manager.js';
 
 // Load environment variables
@@ -48,6 +50,9 @@ async function main() {
   // Initialize memory tool
   const memoryTool = new MemoryTool(process.cwd());
 
+  // Initialize web tools
+  const webTools = new WebTools();
+
   // Initialize model manager with all available APIs
   // Constructor automatically selects Haiku 4.5 as default (fast & cheap)
   const modelManager = new UnifiedModelManager(
@@ -56,9 +61,10 @@ async function main() {
     googleKey
   );
 
-  // Initialize MCP Server and register file tools + memory
+  // Initialize MCP Server and register file tools + web tools + memory
   const mcpServer = new MCPServer();
   registerFileTools(mcpServer, fileTools);
+  registerWebTools(mcpServer, webTools);
 
   // Register memory tool
   mcpServer.registerTool({
@@ -104,6 +110,7 @@ async function main() {
   // Get tool definitions for passing to AI models
   const toolDefinitions = [
     ...getFileToolsDefinitions(),
+    ...getWebToolsDefinitions(),
     {
       name: 'memory',
       description: 'Store and retrieve information across sessions in /memories directory',

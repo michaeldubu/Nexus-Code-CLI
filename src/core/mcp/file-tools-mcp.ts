@@ -235,6 +235,58 @@ export function registerFileTools(mcpServer: MCPServer, fileTools: FileTools): v
     }
     return result.output;
   });
+
+  // BashOutput Tool
+  const bashOutputTool: MCPTool = {
+    name: 'bash_output',
+    description: 'Read output from a background bash shell. Output is cleared after reading.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        shell_id: {
+          type: 'string',
+          description: 'The ID of the background shell (returned from bash_command with background: true)'
+        },
+        filter: {
+          type: 'string',
+          description: 'Optional regex pattern to filter output lines'
+        },
+      },
+      required: ['shell_id'],
+    },
+  };
+
+  mcpServer.registerTool(bashOutputTool, async (input) => {
+    const result = await fileTools.bashOutput(input.shell_id, input.filter);
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+    return result.output;
+  });
+
+  // KillShell Tool
+  const killShellTool: MCPTool = {
+    name: 'kill_shell',
+    description: 'Terminate a background bash shell',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        shell_id: {
+          type: 'string',
+          description: 'The ID of the background shell to terminate'
+        },
+      },
+      required: ['shell_id'],
+    },
+  };
+
+  mcpServer.registerTool(killShellTool, async (input) => {
+    const result = await fileTools.killShell(input.shell_id);
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+    return result.output;
+  });
 }
 
 /**
@@ -322,6 +374,29 @@ export function getFileToolsDefinitions(): MCPTool[] {
           background: { type: 'boolean' },
         },
         required: ['command'],
+      },
+    },
+    {
+      name: 'bash_output',
+      description: 'Read output from a background bash shell',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          shell_id: { type: 'string' },
+          filter: { type: 'string' },
+        },
+        required: ['shell_id'],
+      },
+    },
+    {
+      name: 'kill_shell',
+      description: 'Terminate a background bash shell',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          shell_id: { type: 'string' },
+        },
+        required: ['shell_id'],
       },
     },
   ];

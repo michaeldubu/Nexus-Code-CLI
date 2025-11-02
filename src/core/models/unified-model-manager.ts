@@ -313,9 +313,11 @@ export interface ToolCall {
 }
 
 export interface StreamChunk {
-  type: 'text' | 'thinking' | 'reasoning' | 'tool_call' | 'done';
+  type: 'text' | 'thinking' | 'reasoning' | 'reasoning_summary' | 'tool_call' | 'tool_use' | 'code' | 'status' | 'error' | 'done';
   content?: string;
   toolCall?: ToolCall;
+  toolName?: string;
+  toolInput?: any;
 }
 
 export interface ModelResponse {
@@ -864,9 +866,10 @@ export class UnifiedModelManager {
         verbosity: this.verbosity,
       },
       // Enable reasoning for supported models
+      // CRITICAL: Use model-specific reasoningEffort, not global setting!
       ...(this.getModelConfig().supportsReasoning && {
         reasoning: {
-          effort: this.reasoningEffort,
+          effort: this.getModelConfig().reasoningEffort || this.reasoningEffort,
           summary: 'detailed', // Reasoning models only support 'detailed', not 'concise' //concise IS for 'computer-use-preview' model
         },
       }),
@@ -1151,42 +1154,160 @@ export class UnifiedModelManager {
       text: {
         verbosity: this.verbosity,
       },
+      // CRITICAL: Use model-specific reasoningEffort, not global setting!
       ...(this.getModelConfig().supportsReasoning && {
         reasoning: {
-          effort: this.reasoningEffort,
+          effort: this.getModelConfig().reasoningEffort || this.reasoningEffort,
           summary: 'detailed',
         },
       }),
     } as any);
 
-    // Handle GPT-5 streaming events correctly (from GPT-5 itself!)
+    // Handle OpenAI Responses API streaming events
+    let currentToolCall: { name: string; arguments: string } | null = null;
+
     for await (const event of (stream as any)) {
       const eventType = (event as any).type;
 
+      // Text deltas (assistant output)
       if (eventType === 'response.output_text.delta') {
-        // ✅ Text content from GPT-5
         yield {
           type: 'text',
-          content: (event as any).delta?.text || ''
+          content: (event as any).delta || ''
         };
       }
-      else if (eventType === 'response.reasoning_summary_text.delta') {
-        // ✅ Reasoning/thinking content
+      // Text done
+      else if (eventType === 'response.output_text.done') {
+        // Could emit a marker here if needed
+        continue;
+      }
+      // Reasoning content (for o1/o3 models)
+      else if (eventType === 'response.reasoning_text.delta') {
         yield {
           type: 'reasoning',
           content: (event as any).delta || ''
         };
       }
+      // Reasoning summary (condensed reasoning)
+      else if (eventType === 'response.reasoning_summary_text.delta') {
+        yield {
+          type: 'reasoning_summary',
+          content: (event as any).delta || ''
+        };
+      }
+      // Function/tool call arguments streaming
       else if (eventType === 'response.function_call_arguments.delta') {
-        // TODO: accumulate arguments like Claude
-        continue;
+        if (!currentToolCall) {
+          currentToolCall = { name: (event as any).name || '', arguments: '' };
+        }
+        currentToolCall.arguments += (event as any).delta || '';
+      }
+      else if (eventType === 'response.function_call_arguments.done') {
+        if (currentToolCall || (event as any).name) {
+          yield {
+            type: 'tool_use',
+            toolName: (event as any).name || currentToolCall?.name || '',
+            toolInput: JSON.parse((event as any).arguments || currentToolCall?.arguments || '{}')
+          };
+          currentToolCall = null;
+        }
+      }
+      // MCP tool calls
+      else if (eventType === 'response.mcp_call_arguments.delta') {
+        if (!currentToolCall) {
+          currentToolCall = { name: '', arguments: '' };
+        }
+        currentToolCall.arguments += (event as any).delta || '';
+      }
+      else if (eventType === 'response.mcp_call_arguments.done') {
+        if (currentToolCall || (event as any).arguments) {
+          yield {
+            type: 'tool_use',
+            toolName: 'mcp_call',
+            toolInput: JSON.parse((event as any).arguments || currentToolCall?.arguments || '{}')
+          };
+          currentToolCall = null;
+        }
+      }
+      // Web search events
+      else if (eventType === 'response.web_search_call.in_progress') {
+        yield {
+          type: 'status',
+          content: '🔍 Searching the web...'
+        };
+      }
+      else if (eventType === 'response.web_search_call.completed') {
+        yield {
+          type: 'status',
+          content: '✅ Web search completed'
+        };
+      }
+      // File search events
+      else if (eventType === 'response.file_search_call.searching') {
+        yield {
+          type: 'status',
+          content: '📁 Searching files...'
+        };
+      }
+      else if (eventType === 'response.file_search_call.completed') {
+        yield {
+          type: 'status',
+          content: '✅ File search completed'
+        };
+      }
+      // Image generation events
+      else if (eventType === 'response.image_generation_call.generating') {
+        yield {
+          type: 'status',
+          content: '🎨 Generating image...'
+        };
+      }
+      else if (eventType === 'response.image_generation_call.completed') {
+        yield {
+          type: 'status',
+          content: '✅ Image generated'
+        };
+      }
+      // Code interpreter events
+      else if (eventType === 'response.code_interpreter_call.interpreting') {
+        yield {
+          type: 'status',
+          content: '⚙️ Running code...'
+        };
+      }
+      else if (eventType === 'response.code_interpreter_call_code.delta') {
+        yield {
+          type: 'code',
+          content: (event as any).delta || ''
+        };
+      }
+      // Response lifecycle events
+      else if (eventType === 'response.failed') {
+        yield {
+          type: 'error',
+          content: `Error: ${(event as any).response?.error?.message || 'Unknown error'}`
+        };
+      }
+      else if (eventType === 'response.incomplete') {
+        const reason = (event as any).response?.incomplete_details?.reason || 'unknown';
+        yield {
+          type: 'status',
+          content: `⚠️ Response incomplete: ${reason}`
+        };
       }
       else if (eventType === 'response.completed') {
-        // ✅ GPT-5 DONE EVENT (not response.done!)
+        // Save response ID for continuation
         if ((event as any).response?.id) {
           this.lastResponseId = (event as any).response.id;
         }
         yield { type: 'done' };
+      }
+      // Error event
+      else if (eventType === 'error') {
+        yield {
+          type: 'error',
+          content: `Error: ${(event as any).message || 'Unknown error'}`
+        };
       }
     }
   }
