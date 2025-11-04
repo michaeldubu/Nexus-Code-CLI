@@ -193,14 +193,28 @@ export class FileTools {
         };
       }
 
+      // Check file size BEFORE reading to prevent context overflow
+      if (offset === undefined && limit === undefined) {
+        const stats = require('fs').statSync(fullPath);
+        const fileSizeKB = stats.size / 1024;
+
+        // Block files over 100KB without offset/limit
+        if (fileSizeKB > 100) {
+          return {
+            success: false,
+            error: `⚠️  File too large: ${fileSizeKB.toFixed(1)}KB!\n\nReading this entire file would consume too much context. Please use offset/limit parameters:\n  Example: read_file({ file_path: "${filePath}", offset: 0, limit: 100 })\n\nOr use grep to find specific sections first.`,
+          };
+        }
+      }
+
       const content = readFileSync(fullPath, 'utf-8');
       const lines = content.split('\n');
 
-      // Warn about large files without offset/limit to prevent context overflow
-      if ((offset === undefined && limit === undefined) && lines.length > 1000) {
+      // Secondary check: line count (in case of small file size but many short lines)
+      if ((offset === undefined && limit === undefined) && lines.length > 500) {
         return {
           success: false,
-          error: `⚠️  File too large: ${lines.length} lines!\n\nTo prevent context overflow, please use offset/limit parameters:\n  Example: read_file({ file_path: "${filePath}", offset: 0, limit: 100 })\n\nOr use grep to find specific sections first.`,
+          error: `⚠️  File too large: ${lines.length} lines!\n\nReading this entire file would consume too much context. Please use offset/limit parameters:\n  Example: read_file({ file_path: "${filePath}", offset: 0, limit: 100 })\n\nOr use grep to find specific sections first.`,
         };
       }
 

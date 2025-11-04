@@ -30,27 +30,36 @@ import { MultiLineInput, ContentBlock as InputContentBlock } from './MultiLineIn
 // Build full command list including quick switches
 const BASE_COMMANDS: Command[] = [
   { name: '/add-dir', description: 'Add a new working directory' },
+  { name: '/analyze', description: '🔬 Deep dive into a specific file (complexity, deps, etc.)' },
   { name: '/bashes', description: 'List and manage background tasks' },
   { name: '/caching', description: '💾 Toggle prompt caching (90% cost savings on repeated prompts)' },
   { name: '/chaos', description: '🎭 Enable parallel chaos mode (all models respond simultaneously)' },
   { name: '/clear', description: 'Clear conversation history and free up context' },
   { name: '/compact', description: 'Clear conversation history but keep a summary in memory. Optional: /compact <instructions> for summarization' },
+  { name: '/complex', description: '⚠️  Show files with high complexity' },
   { name: '/computer-use', description: '🖥️  Toggle computer use (GUI automation - requires env var)' },
   { name: '/config', description: 'Open config panel' },
-  { name: '/context', description: 'Visualize current context usage as a colored grid' },
+  { name: '/context', description: '🧠 Show project intelligence summary (frameworks, languages, hot spots)' },
   { name: '/cost', description: 'Show the total cost and duration of the current session' },
+  { name: '/deps', description: '📦 Show dependency tree for a file' },
   { name: '/doctor', description: 'Diagnose and verify installation and settings' },
   { name: '/exit', description: 'Exit NEXUS' },
   { name: '/fuckit', description: 'Angry EXIT' },
   { name: '/export', description: 'Export conversation to markdown or JSON' },
   { name: '/help', description: 'Show available commands' },
+  { name: '/hotspots', description: '🔥 Show frequently modified files' },
   { name: '/interleaved', description: '🧠 Toggle interleaved thinking (Thinking between tool uses)' },
   { name: '/memory', description: 'Show conversation memory usage' },
   { name: '/models', description: 'Select active models (multi-select with space)' },
   { name: '/permissions', description: 'Manage command permissions' },
+  { name: '/relevant', description: '🎯 Find files relevant to a query' },
   { name: '/restore-code', description: 'Restore code from history' },
   { name: '/skill', description: '⚡ List and force-use a specific skill' },
   { name: '/status', description: 'Show current configuration' },
+  { name: '/suggest', description: '💡 Get intelligent suggestions for improvements' },
+  { name: '/issues', description: '⚠️  Detect potential issues in codebase' },
+  { name: '/plan', description: '📋 Generate work plan for a task' },
+  { name: '/autosuggest', description: '💡 Toggle automatic suggestions' },
   { name: '/verbose', description: 'Toggle verbose mode' },
 ];
 
@@ -82,9 +91,11 @@ interface Props {
   mcpServer: any; // MCPServer
   mcpManager: any; // MCPManager
   toolDefinitions: any[]; // Tool definitions for AI
+  intelligence?: any; // NexusIntelligence (optional for backwards compat)
+  intelligentCommands?: any; // IntelligentCommandHandler (optional)
 }
 
-export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools, memoryTool, mcpServer, mcpManager, toolDefinitions }) => {
+export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools, memoryTool, mcpServer, mcpManager, toolDefinitions, intelligence, intelligentCommands }) => {
   const { exit } = useApp();
   const [terminalHeight] = useStdoutDimensions();
 
@@ -621,32 +632,384 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
         ]);
         break;
 
+      // 🧠 INTELLIGENT COMMANDS - Context Intelligence System
       case '/context':
-        const msgCount = messages.length;
-        const estimatedTokens = estimateConversationTokens(messages);
-        const currentModel = AVAILABLE_MODELS[selectedModels[0]];
-        const contextWindow = currentModel?.contextWindow || 200000;
-        const utilization = ((estimatedTokens / contextWindow) * 100).toFixed(1);
+        if (intelligentCommands) {
+          try {
+            const summary = await intelligentCommands.handleContext();
+            setMessages([
+              ...messages,
+              {
+                role: 'system' as const,
+                content: summary,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          } catch (error: any) {
+            setMessages([
+              ...messages,
+              {
+                role: 'system' as const,
+                content: `❌ Intelligence error: ${error.message}`,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          }
+        } else {
+          setMessages([
+            ...messages,
+            {
+              role: 'system' as const,
+              content: '⚠️  Context Intelligence not initialized',
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
+        break;
 
-        //  Simple colored bar visualization
-        const barWidth = 40;
-        const filledWidth = Math.round((estimatedTokens / contextWindow) * barWidth);
-        const emptyWidth = barWidth - filledWidth;
-        const bar = '█'.repeat(filledWidth) + '░'.repeat(emptyWidth);
+      case '/analyze':
+        if (intelligentCommands) {
+          const filePath = command.slice(9).trim();
+          if (!filePath) {
+            setMessages([
+              ...messages,
+              {
+                role: 'system' as const,
+                content: '❌ Usage: /analyze <file-path>\nExample: /analyze src/index.ts',
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          } else {
+            try {
+              const analysis = await intelligentCommands.handleAnalyze(filePath);
+              setMessages([
+                ...messages,
+                {
+                  role: 'system' as const,
+                  content: analysis,
+                  timestamp: new Date().toISOString(),
+                },
+              ]);
+            } catch (error: any) {
+              setMessages([
+                ...messages,
+                {
+                  role: 'system' as const,
+                  content: `❌ Analysis error: ${error.message}`,
+                  timestamp: new Date().toISOString(),
+                },
+              ]);
+            }
+          }
+        } else {
+          setMessages([
+            ...messages,
+            {
+              role: 'system' as const,
+              content: '⚠️  Context Intelligence not initialized',
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
+        break;
 
-        // Color based on utilization
-        let color = 'green';
-        if (estimatedTokens > contextWindow * 0.9) color = 'red';
-        else if (estimatedTokens > contextWindow * 0.7) color = 'yellow';
+      case '/relevant':
+        if (intelligentCommands) {
+          const query = command.slice(10).trim();
+          if (!query) {
+            setMessages([
+              ...messages,
+              {
+                role: 'system' as const,
+                content: '❌ Usage: /relevant <query>\nExample: /relevant authentication system',
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          } else {
+            try {
+              const results = await intelligentCommands.handleRelevant(query);
+              setMessages([
+                ...messages,
+                {
+                  role: 'system' as const,
+                  content: results,
+                  timestamp: new Date().toISOString(),
+                },
+              ]);
+            } catch (error: any) {
+              setMessages([
+                ...messages,
+                {
+                  role: 'system' as const,
+                  content: `❌ Relevance search error: ${error.message}`,
+                  timestamp: new Date().toISOString(),
+                },
+              ]);
+            }
+          }
+        } else {
+          setMessages([
+            ...messages,
+            {
+              role: 'system' as const,
+              content: '⚠️  Context Intelligence not initialized',
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
+        break;
 
-        setMessages([
-          ...messages,
-          {
-            role: 'system' as const,
-            content: `💾 Context Window Usage:\n\n[${bar}] ${utilization}%\n\n  Messages: ${msgCount}\n  Tokens: ~${estimatedTokens.toLocaleString()} / ${contextWindow.toLocaleString()}\n  Model: ${currentModel?.name}\n\n${utilization > '90' ? '⚠️  Context nearly full! Use /compact to compress.' : utilization > '70' ? '⚡ Consider using /compact soon' : '✅ Plenty of context available'}`,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
+      case '/suggest':
+        if (intelligentCommands) {
+          try {
+            const suggestions = await intelligentCommands.handleSuggest();
+            setMessages([
+              ...messages,
+              {
+                role: 'system' as const,
+                content: suggestions,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          } catch (error: any) {
+            setMessages([
+              ...messages,
+              {
+                role: 'system' as const,
+                content: `❌ Suggestion error: ${error.message}`,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          }
+        } else {
+          setMessages([
+            ...messages,
+            {
+              role: 'system' as const,
+              content: '⚠️  Context Intelligence not initialized',
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
+        break;
+
+      case '/deps':
+        if (intelligentCommands) {
+          const depsFile = command.slice(6).trim();
+          if (!depsFile) {
+            setMessages([
+              ...messages,
+              {
+                role: 'system' as const,
+                content: '❌ Usage: /deps <file-path>\nExample: /deps src/index.ts',
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          } else {
+            try {
+              const depsTree = await intelligentCommands.handleDeps(depsFile);
+              setMessages([
+                ...messages,
+                {
+                  role: 'system' as const,
+                  content: depsTree,
+                  timestamp: new Date().toISOString(),
+                },
+              ]);
+            } catch (error: any) {
+              setMessages([
+                ...messages,
+                {
+                  role: 'system' as const,
+                  content: `❌ Dependency tree error: ${error.message}`,
+                  timestamp: new Date().toISOString(),
+                },
+              ]);
+            }
+          }
+        } else {
+          setMessages([
+            ...messages,
+            {
+              role: 'system' as const,
+              content: '⚠️  Context Intelligence not initialized',
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
+        break;
+
+      case '/hotspots':
+        if (intelligentCommands) {
+          try {
+            const hotspots = await intelligentCommands.handleHotspots();
+            setMessages([
+              ...messages,
+              {
+                role: 'system' as const,
+                content: hotspots,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          } catch (error: any) {
+            setMessages([
+              ...messages,
+              {
+                role: 'system' as const,
+                content: `❌ Hotspots error: ${error.message}`,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          }
+        } else {
+          setMessages([
+            ...messages,
+            {
+              role: 'system' as const,
+              content: '⚠️  Context Intelligence not initialized',
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
+        break;
+
+      case '/complex':
+        if (intelligentCommands) {
+          try {
+            const complex = await intelligentCommands.handleComplex();
+            setMessages([
+              ...messages,
+              {
+                role: 'system' as const,
+                content: complex,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          } catch (error: any) {
+            setMessages([
+              ...messages,
+              {
+                role: 'system' as const,
+                content: `❌ Complexity analysis error: ${error.message}`,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          }
+        } else {
+          setMessages([
+            ...messages,
+            {
+              role: 'system' as const,
+              content: '⚠️  Context Intelligence not initialized',
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
+        break;
+
+      case '/plan':
+        if (intelligentCommands) {
+          const task = command.slice(6).trim();
+          if (!task) {
+            setMessages([
+              ...messages,
+              {
+                role: 'system' as const,
+                content: '❌ Usage: /plan <task>\nExample: /plan add user profile page',
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          } else {
+            try {
+              const plan = await intelligentCommands.handlePlan(task);
+              setMessages([
+                ...messages,
+                {
+                  role: 'system' as const,
+                  content: plan,
+                  timestamp: new Date().toISOString(),
+                },
+              ]);
+            } catch (error: any) {
+              setMessages([
+                ...messages,
+                {
+                  role: 'system' as const,
+                  content: `❌ Plan generation error: ${error.message}`,
+                  timestamp: new Date().toISOString(),
+                },
+              ]);
+            }
+          }
+        } else {
+          setMessages([
+            ...messages,
+            {
+              role: 'system' as const,
+              content: '⚠️  Context Intelligence not initialized',
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
+        break;
+
+      case '/issues':
+        if (intelligentCommands) {
+          try {
+            const issues = await intelligentCommands.handleIssues();
+            setMessages([
+              ...messages,
+              {
+                role: 'system' as const,
+                content: issues,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          } catch (error: any) {
+            setMessages([
+              ...messages,
+              {
+                role: 'system' as const,
+                content: `❌ Issue detection error: ${error.message}`,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          }
+        } else {
+          setMessages([
+            ...messages,
+            {
+              role: 'system' as const,
+              content: '⚠️  Context Intelligence not initialized',
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
+        break;
+
+      case '/autosuggest':
+        if (intelligence) {
+          // Toggle auto-suggest
+          const currentState = intelligence['autoSuggest'] || false;
+          intelligence['setAutoSuggest'](!currentState);
+          setMessages([
+            ...messages,
+            {
+              role: 'system' as const,
+              content: `💡 Auto-suggest ${!currentState ? 'ENABLED' : 'DISABLED'}`,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        } else {
+          setMessages([
+            ...messages,
+            {
+              role: 'system' as const,
+              content: '⚠️  Context Intelligence not initialized',
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
         break;
 
       case '/export':
@@ -880,6 +1243,26 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
     setInputValue(''); // Clear input after sending message
     setActiveDialog(null); // Close any open dialogs
     setIsProcessing(true);
+
+    // 🧠 AUTO-LOAD CONTEXT - THE KILLER FEATURE!
+    // Automatically load relevant files before AI processes the message
+    if (intelligentCommands && intelligence && typeof userMessage.content === 'string') {
+      try {
+        const loadedFiles = await intelligentCommands.autoLoadContext(userMessage.content);
+        if (loadedFiles && loadedFiles.length > 0) {
+          console.log(`🧠 Auto-loaded ${loadedFiles.length} relevant files:`, loadedFiles);
+          // Add system message showing what was loaded
+          const autoLoadMsg = {
+            role: 'system' as const,
+            content: `🧠 Auto-loaded ${loadedFiles.length} relevant file(s): ${loadedFiles.join(', ')}`,
+            timestamp: new Date().toISOString(),
+          };
+          setMessages(prev => [...prev, autoLoadMsg]);
+        }
+      } catch (error) {
+        console.warn('⚠️  Auto-load context failed:', error);
+      }
+    }
 
     // Declare these outside try so catch can access them
     let currentStreamingMessages: Map<string, { content: string; thinking: string; modelName: string; agent?: string }> = new Map();
@@ -1320,46 +1703,7 @@ Now help the user build some cool shit.`;
         </Box>
       )}
 
-      {/* Dialogs */}
-      {activeDialog === 'commands' && (
-        <CommandAutocomplete
-          commands={COMMANDS}
-          filter={commandFilter}
-          selectedIndex={selectedCommandIndex}
-          onSelect={(cmd) => handleCommand(cmd.name)}
-          onCancel={() => setActiveDialog(null)}
-        />
-      )}
-
-      {activeDialog === 'models' && (
-        <ModelSelector
-          models={modelManager.listModels()}
-          selectedModels={selectedModels}
-          cursorIndex={modelCursorIndex}
-          onToggle={(modelId) => {
-            setSelectedModels((prev) =>
-              prev.includes(modelId) ? prev.filter((id) => id !== modelId) : [...prev, modelId]
-            );
-          }}
-          onConfirm={() => setActiveDialog(null)}
-          onCancel={() => setActiveDialog(null)}
-        />
-      )}
-
-      {activeDialog === 'permissions' && (
-        <PermissionsDialog
-          approvedCommands={approvedCommands}
-          deniedCommands={deniedCommands}
-          selectedTab={permissionsTab}
-          selectedIndex={permissionsIndex}
-          onAddApproved={() => {}}
-          onAddDenied={() => {}}
-          onRemove={() => {}}
-          onCancel={() => setActiveDialog(null)}
-        />
-      )}
-
-      {/* Approval dialogs moved to bottom of page after status bar */}
+      {/* All dialogs removed from top - moved to bottom for visibility */}
 
       {/* Permissions Input Dialog */}
       {activeDialog === 'permissions-input' && (
@@ -1431,6 +1775,45 @@ Now help the user build some cool shit.`;
              {selectedModels.map(id => AVAILABLE_MODELS[id]?.name || id).join(', ')} is NickNackPattyWackin...
           </Text>
         </Box>
+      )}
+
+      {/* ALL DIALOGS - Positioned at bottom for visibility */}
+      {activeDialog === 'commands' && (
+        <CommandAutocomplete
+          commands={COMMANDS}
+          filter={commandFilter}
+          selectedIndex={selectedCommandIndex}
+          onSelect={(cmd) => handleCommand(cmd.name)}
+          onCancel={() => setActiveDialog(null)}
+        />
+      )}
+
+      {activeDialog === 'models' && (
+        <ModelSelector
+          models={modelManager.listModels()}
+          selectedModels={selectedModels}
+          cursorIndex={modelCursorIndex}
+          onToggle={(modelId) => {
+            setSelectedModels((prev) =>
+              prev.includes(modelId) ? prev.filter((id) => id !== modelId) : [...prev, modelId]
+            );
+          }}
+          onConfirm={() => setActiveDialog(null)}
+          onCancel={() => setActiveDialog(null)}
+        />
+      )}
+
+      {activeDialog === 'permissions' && (
+        <PermissionsDialog
+          approvedCommands={approvedCommands}
+          deniedCommands={deniedCommands}
+          selectedTab={permissionsTab}
+          selectedIndex={permissionsIndex}
+          onAddApproved={() => {}}
+          onAddDenied={() => {}}
+          onRemove={() => {}}
+          onCancel={() => setActiveDialog(null)}
+        />
       )}
 
       {/* Input - Use MultiLineInput for better UX */}

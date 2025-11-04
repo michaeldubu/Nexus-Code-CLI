@@ -89,8 +89,19 @@ export function freeEncoder(): void {
 
 /**
  * Estimate tokens for a message
+ *
+ * IMPORTANT: Thinking blocks behavior with context window:
+ * - When using extended thinking with tool use, the effective context window is:
+ *   context_window = input_tokens + current_turn_tokens
+ * - Previous thinking blocks are automatically stripped from context window calculations
+ * - When a non-tool-result user block is included, all previous thinking blocks are ignored
+ * - However, thinking blocks from previous turns are cached and count as input tokens when read from cache
+ * - During tool use loops, thinking blocks must be preserved and passed back to the API
  */
-export function estimateMessageTokens(message: Message): number {
+export function estimateMessageTokens(message: Message, options?: {
+  includeThinking?: boolean; // Whether to include thinking tokens (default: true)
+  isCachedThinking?: boolean; // Whether thinking is from cache (counts as input tokens)
+}): number {
   let total = 0;
 
   if (typeof message.content === 'string') {
@@ -109,7 +120,9 @@ export function estimateMessageTokens(message: Message): number {
     }
   }
 
-  if (message.thinking) {
+  // Include thinking tokens if requested (default: true)
+  const includeThinking = options?.includeThinking ?? true;
+  if (message.thinking && includeThinking) {
     total += estimateTokens(message.thinking);
   }
 

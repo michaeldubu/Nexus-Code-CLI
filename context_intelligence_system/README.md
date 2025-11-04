@@ -1,6 +1,6 @@
 # 🔥 THE COMPLETE NEXUS INTELLIGENCE + MCP PACKAGE
 
-**Everything you need to make AI actually understand your codebase**
+**Everything you need to make AI actually understand what the fucks ACTUALLY in your codebase**
 
 ## What's In This Package
 
@@ -52,7 +52,7 @@ Connects everything together via WebSocket
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                Your AI System                    │
+│                our AI System                    │
 │           (Claude, GPT, or SAM)                 │
 └────────────────────┬────────────────────────────┘
                      │
@@ -85,7 +85,7 @@ Connects everything together via WebSocket
                      │
                      ▼
 ┌─────────────────────────────────────────────────┐
-│              Your Codebase                      │
+│              our Codebase                      │
 │         (Kotlin, Java, TS, Python, etc.)        │
 └─────────────────────────────────────────────────┘
 ```

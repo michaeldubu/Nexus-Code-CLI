@@ -40,19 +40,26 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
   const [attachedFiles, setAttachedFiles] = useState<ContentBlock[]>([]);
   const [lastInputLength, setLastInputLength] = useState(0);
 
+  // Safety net: keep cursor within bounds when value changes externally
+  useEffect(() => {
+    if (cursorOffset > value.length) {
+      setCursorOffset(value.length);
+    }
+  }, [value.length]);
+
   // Handle keyboard input
   useInput(
     (input, key) => {
       if (disabled) return;
 
-      // DEBUG: Log raw input to see what's coming through
-      if (input || Object.keys(key).some(k => key[k])) {
-        const activeKeys = Object.keys(key).filter(k => key[k]);
-        console.log(`🔍 RAW INPUT | input: "${input}" (charCode: ${input?.charCodeAt(0) || 'none'}) | keys: [${activeKeys.join(', ')}]`);
+      // Ctrl+D = Remove last attachment
+      if (key.ctrl && input === 'd' && attachedFiles.length > 0) {
+        setAttachedFiles(prev => prev.slice(0, -1));
+        return;
       }
 
-      // Check for newline character (Shift+Enter produces '\n' in some terminals)
-      if (input === '\n' || (input === '\r' && key.shift)) {
+      // Shift+Enter = newline (the CORRECT way)
+      if (key.return && key.shift) {
         const newValue =
           value.slice(0, cursorOffset) + '\n' + value.slice(cursorOffset);
         onChange(newValue);
@@ -60,7 +67,7 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
         return;
       }
 
-      // Backslash+Enter = New line (like Claude Code! 🔥)
+      // Backslash+Enter = newline (bandaid, but keeping it since it works)
       if (key.return && value[cursorOffset - 1] === '\\') {
         // Remove the backslash and add newline
         const newValue =
@@ -77,40 +84,25 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
       }
 
       // Backspace - delete character BEFORE cursor
-      if (key.backspace) {
-        console.log(`🔍 BACKSPACE detected | cursorOffset: ${cursorOffset} | value: "${value}"`);
+      // Note: Most terminals send backspace as charCode 127, which Ink interprets as key.delete
+      // So we treat both key.backspace and key.delete as backwards delete (like the original)
+      if (key.backspace || key.delete) {
         if (cursorOffset > 0) {
           const newValue =
             value.slice(0, cursorOffset - 1) + value.slice(cursorOffset);
-          console.log(`🔍 BACKSPACE result | newValue: "${newValue}"`);
           onChange(newValue);
           setCursorOffset(cursorOffset - 1);
         }
         return;
       }
 
-      // Delete - delete character AFTER cursor (forward delete)
-      if (key.delete) {
-        console.log(`🔍 DELETE detected | cursorOffset: ${cursorOffset} | value: "${value}"`);
-        if (cursorOffset < value.length) {
-          const newValue =
-            value.slice(0, cursorOffset) + value.slice(cursorOffset + 1);
-          console.log(`🔍 DELETE result | newValue: "${newValue}"`);
-          onChange(newValue);
-          // Cursor stays in same position
-        }
-        return;
-      }
-
       // Arrow keys for cursor movement
       if (key.leftArrow && cursorOffset > 0) {
-        console.log(`🔍 LEFT ARROW | cursorOffset: ${cursorOffset} -> ${cursorOffset - 1}`);
         setCursorOffset(cursorOffset - 1);
         return;
       }
 
       if (key.rightArrow && cursorOffset < value.length) {
-        console.log(`🔍 RIGHT ARROW | cursorOffset: ${cursorOffset} -> ${cursorOffset + 1}`);
         setCursorOffset(cursorOffset + 1);
         return;
       }
@@ -192,8 +184,10 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
 
         const newValue =
           value.slice(0, cursorOffset) + finalInput + value.slice(cursorOffset);
+        const newCursor = cursorOffset + finalInput.length;
+
         onChange(newValue);
-        setCursorOffset(cursorOffset + finalInput.length);
+        setCursorOffset(newCursor);
         setLastInputLength(newValue.length);
 
         // Auto-detect file paths when user types/pastes them
@@ -307,7 +301,7 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
       {/* Attached files preview */}
       {attachedFiles.length > 0 && (
         <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="cyan" paddingX={1}>
-          <Text color="cyan" bold>📎 Attachments ({attachedFiles.length}):</Text>
+          <Text color="cyan" bold>📎 Attachments ({attachedFiles.length}) - Ctrl+D to remove last</Text>
           {attachedFiles.map((file, idx) => (
             <Box key={idx} marginLeft={2}>
               <Text color="gray">
@@ -361,7 +355,7 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
       {lines.length > 1 && (
         <Box marginTop={0}>
           <Text color="gray" dimColor>
-            Line {currentLine + 1}, Col {currentColumn} | {value.length} chars
+            Line {currentLine + 1}, Col {currentColumn + 1} | {value.length} chars
           </Text>
         </Box>
       )}

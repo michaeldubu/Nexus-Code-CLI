@@ -17,6 +17,8 @@ import { MCPServer } from '../core/mcp/client.js';
 import { registerFileTools, getFileToolsDefinitions } from '../core/mcp/file-tools-mcp.js';
 import { registerWebTools, getWebToolsDefinitions } from '../core/mcp/web-tools-mcp.js';
 import { getMCPManager } from '../core/mcp/mcp-manager.js';
+import { NexusIntelligence } from '../core/intelligence/nexus-intelligence.js';
+import { IntelligentCommandHandler } from '../core/intelligence/intelligent-commands.js';
 
 // Load environment variables
 dotenvConfig();
@@ -100,12 +102,64 @@ async function main() {
   try {
     mcpConnected = await mcpManager.autoConnect();
     if (mcpConnected) {
-      console.log('✅ Connected to JetBrains plugin!');
-      console.log(`   Project: ${mcpManager.getCurrentInstance()?.projectName}`);
+      // Log to file - no console spam
+      const fs = require('fs');
+      const logDir = `${process.env.HOME}/.nexus/logs`;
+      if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
+      }
+      fs.appendFileSync(
+        `${logDir}/mcp.log`,
+        `[${new Date().toISOString()}] Connected to JetBrains plugin: ${mcpManager.getCurrentInstance()?.projectName}\n`
+      );
     }
   } catch (error) {
-    console.warn('⚠️  JetBrains plugin not available (intelligence features disabled)');
+    // Log to file - JetBrains plugin is OPTIONAL (TypeScript intelligence works standalone)
+    const fs = require('fs');
+    const logDir = `${process.env.HOME}/.nexus/logs`;
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+    fs.appendFileSync(
+      `${logDir}/mcp.log`,
+      `[${new Date().toISOString()}] JetBrains plugin not available (optional - TypeScript intelligence active)\n`
+    );
   }
+
+  // 🧠 Initialize Context Intelligence Engine (BACKGROUND - non-blocking!)
+  let intelligence: NexusIntelligence | undefined;
+  let intelligentCommands: IntelligentCommandHandler | undefined;
+
+  // Start in background - DON'T BLOCK TUI STARTUP
+  (async () => {
+    try {
+      intelligence = new NexusIntelligence(
+        process.cwd(),
+        fileTools,
+        memoryTool,
+        fileSystem
+      );
+      await intelligence.initialize();
+      intelligentCommands = new IntelligentCommandHandler({
+        intelligence,
+        fileTools,
+        memory: memoryTool,
+        nexusFs: fileSystem,
+      });
+      // Silent - all logs go to ~/.nexus/logs/intelligence.log
+    } catch (error) {
+      // Log to file, not console
+      const fs = require('fs');
+      const logDir = `${process.env.HOME}/.nexus/logs`;
+      if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
+      }
+      fs.appendFileSync(
+        `${logDir}/intelligence.log`,
+        `[${new Date().toISOString()}] Init failed: ${error}\n`
+      );
+    }
+  })();
 
   // Get tool definitions for passing to AI models
   const toolDefinitions = [
@@ -165,6 +219,8 @@ async function main() {
       mcpServer,
       mcpManager,
       toolDefinitions,
+      intelligence,
+      intelligentCommands,
     }),
     {
       exitOnCtrlC: false, // Disable Ink's automatic exit

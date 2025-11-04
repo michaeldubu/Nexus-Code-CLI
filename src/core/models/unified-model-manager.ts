@@ -1,6 +1,61 @@
 /**
  * Unified Multi-Model Manager
  * Supports Anthropic, OpenAI, Google Gemini, and Ollama
+ *
+ * CRITICAL: Tool Use + Thinking Implementation Notes
+ * ===================================================
+ *
+ * When using extended thinking with tool use, several important behaviors must be maintained:
+ *
+ * 1. THINKING BLOCK PRESERVATION:
+ *    - During tool use loops, thinking blocks from the last assistant message must be preserved
+ *    - Pass the complete unmodified thinking blocks back to the API with tool results
+ *    - Thinking blocks are included in the content array as { type: 'thinking', thinking: '...' }
+ *
+ * 2. TOOL RESULT STRUCTURE:
+ *    Tool results MUST be structured correctly when including system-reminders.
+ *    CORRECT structure:
+ *    {
+ *      "role": "user",
+ *      "content": [
+ *        {
+ *          "tool_use_id": "toolu_01XdVUKZTiWkVoFnuD2mv5oX",
+ *          "type": "tool_result",
+ *          "content": [
+ *            { "type": "text", "text": "Tool result here" },
+ *            { "type": "text", "text": "<system-reminder>...</system-reminder>" }
+ *          ]
+ *        }
+ *      ]
+ *    }
+ *
+ *    INCORRECT (causes MCP bug): System-reminders concatenated directly with tool results
+ *
+ * 3. TOOL_CHOICE LIMITATION:
+ *    Tool use with thinking only supports:
+ *    - tool_choice: {type: "auto"} (default)
+ *    - tool_choice: {type: "none"}
+ *    Using tool_choice: {type: "any"} or {type: "tool", name: "..."} will error
+ *
+ * 4. CONTEXT WINDOW BEHAVIOR:
+ *    - Effective context window = input_tokens + current_turn_tokens
+ *    - Previous thinking blocks are automatically stripped from context calculations
+ *    - When a non-tool-result user block is included, all previous thinking blocks are ignored
+ *    - Thinking blocks from previous turns are cached and count as input tokens when read from cache
+ *
+ * 5. PROMPT CACHING:
+ *    - Changes to thinking parameters (enabled/disabled, budget) invalidate cache breakpoints
+ *    - Thinking blocks are cached and retrieved efficiently
+ *
+ * 6. MID-TURN TOGGLES:
+ *    - Cannot toggle thinking during an assistant turn (including tool use loops)
+ *    - Only toggle thinking between complete assistant turns
+ *
+ * 7. BETA HEADERS:
+ *    - interleaved-thinking-2025-05-14: For interleaved thinking
+ *    - context-1m-2025-08-07: For 1M context window (Sonnet 4/4.5)
+ *    - prompt-caching-2024-07-31: For prompt caching
+ *    - computer-use-2025-01-24: For computer use capability
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -67,8 +122,8 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'claude-haiku-4-5-20251001',
     name: 'Claude Haiku 4.5',
     provider: 'anthropic',
-    supportsThinking: false,
-    supportsInterleavedThinking: false,
+    supportsThinking: true, // 🔥 HAIKU 4.5 NOW SUPPORTS EXTENDED THINKING!
+    supportsInterleavedThinking: true, // 🔥 Interleaved thinking too!
     supportsComputerUse: true,
     supportsPromptCaching: true,
     maxTokens: 64000,
@@ -81,7 +136,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'GPT-5',
     provider: 'openai',
     supportsReasoning: true,
-    reasoningEffort: 'high',
+    reasoningEffort: 'low',
     maxTokens: 32768,
     contextWindow: 128000,
   },
@@ -107,7 +162,8 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'gpt-5-nano',
     name: 'GPT-5 Nano',
     provider: 'openai',
-    supportsReasoning: false,
+    supportsReasoning: true,
+    reasoningEffort: 'low',
     maxTokens: 32768,
     contextWindow: 128000,
   },
@@ -115,7 +171,8 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'gpt-5-codex',
     name: 'GPT-5 Codex',
     provider: 'openai',
-    supportsReasoning: false,
+    supportsReasoning: true,
+    reasoningEffort: 'medium',
     maxTokens: 32768,
     contextWindow: 128000,
   },
@@ -132,6 +189,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'GPT-4.1',
     provider: 'openai',
     supportsReasoning: false,
+    reasoningEffort: 'medium',
     maxTokens: 32768,
     contextWindow: 128000,
   },
@@ -148,6 +206,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'GPT-4o',
     provider: 'openai',
     supportsReasoning: true,
+    reasoningEffort: 'medium',
     supportsVision: true,
     maxTokens: 16384,
     contextWindow: 128000,
@@ -157,6 +216,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'GPT-4o Mini',
     provider: 'openai',
     supportsReasoning: true,
+    reasoningEffort: 'medium',
     supportsVision: true,
     maxTokens: 16384,
     contextWindow: 128000,
@@ -166,6 +226,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'GPT-4o Search',
     provider: 'openai',
     supportsReasoning: true,
+    reasoningEffort: 'medium',
     supportsVision: true,
     maxTokens: 16384,
     contextWindow: 128000,
@@ -184,7 +245,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'O1 Pro',
     provider: 'openai',
     supportsReasoning: true,
-    reasoningEffort: 'high',
+    reasoningEffort: 'medium',
     maxTokens: 100000,
     contextWindow: 200000,
   },
@@ -193,7 +254,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'O3',
     provider: 'openai',
     supportsReasoning: true,
-    reasoningEffort: 'high',
+    reasoningEffort: 'medium',
     maxTokens: 100000,
     contextWindow: 200000,
   },
@@ -202,7 +263,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'O3 Pro',
     provider: 'openai',
     supportsReasoning: true,
-    reasoningEffort: 'high',
+    reasoningEffort: 'medium',
     maxTokens: 100000,
     contextWindow: 200000,
   },
@@ -229,7 +290,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'O4 Mini Deep Research',
     provider: 'openai',
     supportsReasoning: true,
-    reasoningEffort: 'high',
+    reasoningEffort: 'medium',
     maxTokens: 65536,
     contextWindow: 200000,
   },
@@ -351,6 +412,8 @@ export class UnifiedModelManager {
   private lastResponseId?: string;
   private conversationHistory: Message[] = []; //rolling context window management
   private contextManager?: ContextWindowManager; //Context window manager
+  private isInToolUseLoop: boolean = false; // Track if we're in a tool use loop (prevent mid-turn thinking toggles)
+  private lastAssistantThinkingBlocks: any[] = []; // Preserve thinking blocks from last assistant message for tool use
 
   constructor(
     anthropicKey?: string,
@@ -480,8 +543,19 @@ export class UnifiedModelManager {
 
   /**
    * Toggle thinking mode
+   * CRITICAL: Cannot toggle thinking in the middle of an assistant turn (including tool use loops)
    */
   toggleThinking(): boolean {
+    if (this.isInToolUseLoop) {
+      console.warn('⚠️ Cannot toggle thinking during a tool use loop. Complete the assistant turn first.');
+      return this.thinkingEnabled;
+    }
+
+    // Invalidate prompt cache when thinking parameters change
+    if (this.promptCachingEnabled) {
+      console.log('🔄 Thinking parameter changed - prompt cache will be invalidated');
+    }
+
     this.thinkingEnabled = !this.thinkingEnabled;
     return this.thinkingEnabled;
   }
@@ -495,8 +569,19 @@ export class UnifiedModelManager {
 
   /**
    * Toggle interleaved thinking mode
+   * CRITICAL: Cannot toggle thinking in the middle of an assistant turn (including tool use loops)
    */
   toggleInterleavedThinking(): boolean {
+    if (this.isInToolUseLoop) {
+      console.warn('⚠️ Cannot toggle interleaved thinking during a tool use loop. Complete the assistant turn first.');
+      return this.interleavedThinkingEnabled;
+    }
+
+    // Invalidate prompt cache when thinking parameters change
+    if (this.promptCachingEnabled) {
+      console.log('🔄 Thinking parameter changed - prompt cache will be invalidated');
+    }
+
     this.interleavedThinkingEnabled = !this.interleavedThinkingEnabled;
     return this.interleavedThinkingEnabled;
   }
@@ -677,14 +762,30 @@ export class UnifiedModelManager {
       temperature?: number;
       maxTokens?: number;
       systemPrompt?: string;
+      tools?: any[];
+      tool_choice?: any;
     }
   ): Promise<ModelResponse> {
+    // Format messages and PRESERVE thinking blocks from previous assistant messages
     const formattedMessages = messages
       .filter(m => m.role !== 'system')
-      .map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: toAnthropicContent(m.content),
-      }));
+      .map(m => {
+        const baseMessage: any = {
+          role: m.role as 'user' | 'assistant',
+          content: toAnthropicContent(m.content),
+        };
+
+        // CRITICAL: Preserve thinking blocks during tool use loops
+        // When passing tool results back, we must include the complete unmodified thinking blocks
+        if (m.role === 'assistant' && m.thinking) {
+          baseMessage.content = [
+            { type: 'thinking', thinking: m.thinking },
+            ...Array.isArray(baseMessage.content) ? baseMessage.content : [{ type: 'text', text: baseMessage.content }]
+          ];
+        }
+
+        return baseMessage;
+      });
 
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
     const systemPromptText = typeof systemPrompt === 'string' ? systemPrompt : contentToText(systemPrompt || '');
@@ -692,6 +793,18 @@ export class UnifiedModelManager {
     // MAXIMUM CREATIVITY! All models use temperature 1.0 🔥
     const useThinking = this.getModelConfig().supportsThinking && this.thinkingEnabled;
     const useInterleavedThinking = this.getModelConfig().supportsThinking && this.interleavedThinkingEnabled;
+
+    // CRITICAL: Validate tool_choice when thinking is enabled
+    // Thinking + tool use only supports tool_choice: {type: "auto"} or {type: "none"}
+    if (useThinking && options.tool_choice) {
+      const toolChoiceType = typeof options.tool_choice === 'string' ? options.tool_choice : options.tool_choice.type;
+      if (toolChoiceType === 'any' || toolChoiceType === 'tool') {
+        throw new Error(
+          'Tool use with thinking only supports tool_choice: {type: "auto"} (default) or {type: "none"}. ' +
+          'Using tool_choice: {type: "any"} or {type: "tool", name: "..."} will result in an error.'
+        );
+      }
+    }
 
     // Build extra headers for beta features
     const betaFeatures: string[] = [];
@@ -705,12 +818,16 @@ export class UnifiedModelManager {
     if (this.promptCachingEnabled) {
       betaFeatures.push('prompt-caching-2024-07-31');
     }
-    if (this.skillsEnabled) {
-      // Agent Skills requires 3 beta headers
-      betaFeatures.push('code-execution-2025-08-25');
-      betaFeatures.push('skills-2025-10-02');
-      betaFeatures.push('files-api-2025-04-14');
+    // Add 1M context beta header for Sonnet 4 and 4.5
+    if (this.currentModel === 'claude-sonnet-4-20250514' || this.currentModel === 'claude-sonnet-4-5-20250929') {
+      betaFeatures.push('context-1m-2025-08-07');
     }
+    // Skills disabled - requires docker container via code-execution beta
+    // if (this.skillsEnabled) {
+    //   betaFeatures.push('code-execution-2025-08-25');
+    //   betaFeatures.push('skills-2025-10-02');
+    //   betaFeatures.push('files-api-2025-04-14');
+    // }
 
     // Enable prompt caching if enabled
     let finalSystem: any = systemPromptText;
@@ -731,15 +848,15 @@ export class UnifiedModelManager {
     const client = this.getAnthropicClient();
 
     // Prepare tools array - include code_execution if skills are enabled
-    let anthropicTools: any[] = [];
+    let anthropicTools: any[] = options.tools && options.tools.length > 0 ? mcpToAnthropicTools(options.tools) as any : [];
 
-    // CRITICAL: Skills beta REQUIRES code_execution tool to be included
-    if (this.skillsEnabled) {
-      anthropicTools.push({
-        type: 'code_execution_20250825', // Special tool type matching beta header
-        name: 'code_execution',
-      });
-    }
+    // Skills disabled - requires docker container
+    // if (this.skillsEnabled) {
+    //   anthropicTools.push({
+    //     type: 'code_execution_20250825',
+    //     name: 'code_execution',
+    //   });
+    // }
 
     // Build request options (first parameter)
     const requestOptions: any = {
@@ -748,9 +865,12 @@ export class UnifiedModelManager {
       temperature: 1.0,
       system: finalSystem,
       messages: finalMessages as any,
-      // Add code_execution tool if skills are enabled
+      // Add tools if provided
       ...(anthropicTools.length > 0 && { tools: anthropicTools }),
-      ...(useThinking && !useInterleavedThinking && {
+      // Add tool_choice if provided and validated
+      ...(options.tool_choice && { tool_choice: options.tool_choice }),
+      // Enable thinking: use extended thinking if not using interleaved (beta header handles interleaved)
+      ...(useThinking && {
         thinking: {
           type: 'enabled',
           budget_tokens: 200000,
@@ -771,10 +891,14 @@ export class UnifiedModelManager {
     const thinkingContent = response.content.find((c: any) => c.type === 'thinking');
 
     const toolCalls: ToolCall[] = [];
+    const thinkingBlocks: any[] = [];
 
-    // Extract all tool_use blocks
+    // Extract all tool_use blocks and thinking blocks
     for (const contentBlock of response.content) {
       if (contentBlock.type === 'tool_use') {
+        // We're entering a tool use loop - set flag to prevent mid-turn thinking toggles
+        this.isInToolUseLoop = true;
+
         // Extract input parameters from tool call
         const input = (contentBlock as any).input as Record<string, any>;
         toolCalls.push({
@@ -785,7 +909,20 @@ export class UnifiedModelManager {
             arguments: JSON.stringify(input), // Convert to JSON string for consistency
           },
         });
+      } else if ((contentBlock as any).type === 'thinking') {
+        // Preserve thinking blocks for future tool use loops
+        thinkingBlocks.push({ type: 'thinking', thinking: (contentBlock as any).thinking });
       }
+    }
+
+    // Save thinking blocks for future tool use loops
+    if (thinkingBlocks.length > 0) {
+      this.lastAssistantThinkingBlocks = thinkingBlocks;
+    }
+
+    // If no tool calls, we're done with this turn - reset flag
+    if (toolCalls.length === 0) {
+      this.isInToolUseLoop = false;
     }
 
     return {
@@ -977,14 +1114,29 @@ export class UnifiedModelManager {
       maxTokens?: number;
       systemPrompt?: string;
       tools?: any[];
+      tool_choice?: any;
     }
   ): AsyncGenerator<StreamChunk> {
+    // Format messages and PRESERVE thinking blocks from previous assistant messages
     const formattedMessages = messages
       .filter(m => m.role !== 'system')
-      .map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: toAnthropicContent(m.content),
-      }));
+      .map(m => {
+        const baseMessage: any = {
+          role: m.role as 'user' | 'assistant',
+          content: toAnthropicContent(m.content),
+        };
+
+        // CRITICAL: Preserve thinking blocks during tool use loops
+        // When passing tool results back, we must include the complete unmodified thinking blocks
+        if (m.role === 'assistant' && m.thinking) {
+          baseMessage.content = [
+            { type: 'thinking', thinking: m.thinking },
+            ...Array.isArray(baseMessage.content) ? baseMessage.content : [{ type: 'text', text: baseMessage.content }]
+          ];
+        }
+
+        return baseMessage;
+      });
 
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
     const systemPromptText = typeof systemPrompt === 'string' ? systemPrompt : contentToText(systemPrompt || '');
@@ -992,6 +1144,18 @@ export class UnifiedModelManager {
     // MAXIMUM CREATIVITY! All models use temperature 1.0 🔥
     const useThinking = this.getModelConfig().supportsThinking && this.thinkingEnabled;
     const useInterleavedThinking = this.getModelConfig().supportsThinking && this.interleavedThinkingEnabled;
+
+    // CRITICAL: Validate tool_choice when thinking is enabled
+    // Thinking + tool use only supports tool_choice: {type: "auto"} or {type: "none"}
+    if (useThinking && options.tool_choice) {
+      const toolChoiceType = typeof options.tool_choice === 'string' ? options.tool_choice : options.tool_choice.type;
+      if (toolChoiceType === 'any' || toolChoiceType === 'tool') {
+        throw new Error(
+          'Tool use with thinking only supports tool_choice: {type: "auto"} (default) or {type: "none"}. ' +
+          'Using tool_choice: {type: "any"} or {type: "tool", name: "..."} will result in an error.'
+        );
+      }
+    }
 
     // Build headers for beta features
     const betaFeatures: string[] = [];
@@ -1005,12 +1169,16 @@ export class UnifiedModelManager {
     if (this.promptCachingEnabled) {
       betaFeatures.push('prompt-caching-2024-07-31');
     }
-    if (this.skillsEnabled) {
-      // Agent Skills requires 3 beta headers
-      betaFeatures.push('code-execution-2025-08-25');
-      betaFeatures.push('skills-2025-10-02');
-      betaFeatures.push('files-api-2025-04-14');
+    // Add 1M context beta header for Sonnet 4 and 4.5
+    if (this.currentModel === 'claude-sonnet-4-20250514' || this.currentModel === 'claude-sonnet-4-5-20250929') {
+      betaFeatures.push('context-1m-2025-08-07');
     }
+    // Skills disabled - requires docker container via code-execution beta
+    // if (this.skillsEnabled) {
+    //   betaFeatures.push('code-execution-2025-08-25');
+    //   betaFeatures.push('skills-2025-10-02');
+    //   betaFeatures.push('files-api-2025-04-14');
+    // }
 
     // Use streaming client (10 min timeout)
     const client = this.getAnthropicStreamingClient();
@@ -1018,13 +1186,13 @@ export class UnifiedModelManager {
     // Prepare tools array - include code_execution if skills are enabled
     let anthropicTools: any[] = options.tools && options.tools.length > 0 ? mcpToAnthropicTools(options.tools) as any : [];
 
-    // CRITICAL: Skills beta REQUIRES code_execution tool to be included
-    if (this.skillsEnabled && !anthropicTools.find(t => t.name === 'code_execution')) {
-      anthropicTools.push({
-        type: 'code_execution_20250825', // Special tool type matching beta header
-        name: 'code_execution',
-      });
-    }
+    // Skills disabled - requires docker container
+    // if (this.skillsEnabled && !anthropicTools.find(t => t.name === 'code_execution')) {
+    //   anthropicTools.push({
+    //     type: 'code_execution_20250825',
+    //     name: 'code_execution',
+    //   });
+    // }
 
     // Build streaming request options (first parameter)
     const streamOptions: any = {
@@ -1035,7 +1203,10 @@ export class UnifiedModelManager {
       messages: formattedMessages as any,
       // Add tool support
       ...(anthropicTools.length > 0 && { tools: anthropicTools }),
-      ...(useThinking && !useInterleavedThinking && {
+      // Add tool_choice if provided and validated
+      ...(options.tool_choice && { tool_choice: options.tool_choice }),
+      // Enable thinking: use extended thinking if not using interleaved (beta header handles interleaved)
+      ...(useThinking && {
         thinking: {
           type: 'enabled',
           budget_tokens: 200000,
@@ -1052,18 +1223,28 @@ export class UnifiedModelManager {
 
     const stream = await client.messages.stream(streamOptions, headersOptions);
 
-    // Track tool calls being built up from deltas 🔥
+    // Track tool calls and thinking blocks being built up from deltas 🔥
     let currentToolCall: { id: string; name: string; inputStr: string } | null = null;
+    let currentThinkingBlock: string = '';
+    const thinkingBlocks: any[] = [];
 
     for await (const chunk of stream) {
       if (chunk.type === 'content_block_start') {
         // Start tracking tool_use blocks
         if (chunk.content_block.type === 'tool_use') {
+          // We're entering a tool use loop - set flag to prevent mid-turn thinking toggles
+          this.isInToolUseLoop = true;
+
           currentToolCall = {
             id: chunk.content_block.id,
             name: chunk.content_block.name,
             inputStr: '', // Will accumulate from deltas - THIS IS THE FIX!
           };
+        }
+        // Handle thinking block start
+        else if ((chunk.content_block as any).type === 'thinking') {
+          // Thinking block started - deltas will follow
+          currentThinkingBlock = '';
         }
       } else if (chunk.type === 'content_block_delta') {
         if (chunk.delta.type === 'text_delta') {
@@ -1076,14 +1257,22 @@ export class UnifiedModelManager {
         else if (chunk.delta.type === 'input_json_delta' && currentToolCall) {
           currentToolCall.inputStr += chunk.delta.partial_json;
         }
-        // Thinking deltas
+        // Thinking deltas - accumulate for preservation
         else if ((chunk.delta as any).type === 'thinking_delta') {
+          const thinkingText = (chunk.delta as any).thinking || '';
+          currentThinkingBlock += thinkingText;
           yield {
             type: 'thinking',
-            content: (chunk.delta as any).thinking,
+            content: thinkingText,
           };
         }
       } else if (chunk.type === 'content_block_stop') {
+        // Save thinking block for later use during tool use loops
+        if (currentThinkingBlock) {
+          thinkingBlocks.push({ type: 'thinking', thinking: currentThinkingBlock });
+          currentThinkingBlock = '';
+        }
+
         // Finalize the tool call with accumulated parameters
         if (currentToolCall) {
           try {
@@ -1105,6 +1294,12 @@ export class UnifiedModelManager {
           currentToolCall = null;
         }
       } else if (chunk.type === 'message_stop') {
+        // Save thinking blocks for future tool use loops
+        if (thinkingBlocks.length > 0) {
+          this.lastAssistantThinkingBlocks = thinkingBlocks;
+        }
+        // Reset tool use loop flag when message is complete
+        this.isInToolUseLoop = false;
         yield { type: 'done' };
       }
     }
