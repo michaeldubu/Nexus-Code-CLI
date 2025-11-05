@@ -63,13 +63,24 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
         return;
       }
 
-      // Backspace
-      if (key.backspace || key.delete) {
+      // Backspace (backward delete)
+      if (key.backspace) {
         if (cursorOffset > 0) {
           const newValue =
             value.slice(0, cursorOffset - 1) + value.slice(cursorOffset);
           onChange(newValue);
           setCursorOffset(cursorOffset - 1);
+        }
+        return;
+      }
+
+      // Delete (forward delete)
+      if (key.delete) {
+        if (cursorOffset < value.length) {
+          const newValue =
+            value.slice(0, cursorOffset) + value.slice(cursorOffset + 1);
+          onChange(newValue);
+          // Cursor stays in same position
         }
         return;
       }

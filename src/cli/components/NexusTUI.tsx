@@ -31,7 +31,7 @@ const BASE_COMMANDS: Command[] = [
   { name: '/add-dir', description: 'Add a new working directory' },
   { name: '/bashes', description: 'List and manage background tasks' },
   { name: '/caching', description: '💾 Toggle prompt caching (90% cost savings on repeated prompts)' },
-  { name: '/chaos', description: '🎭 Enable parallel chaos mode (all models respond simultaneously)' },
+  // /chaos - hidden easter egg (not advertised, still works)
   { name: '/clear', description: 'Clear conversation history and free up context' },
   { name: '/compact', description: 'Clear conversation history but keep a summary in memory. Optional: /compact <instructions> for summarization' },
   { name: '/computer-use', description: '🖥️  Toggle computer use (GUI automation - requires env var)' },
@@ -1142,7 +1142,7 @@ Now help the user build some cool shit.`;
           }
         }
 
-        // FEED TOOL RESULTS BACK AS USER MESSAGE
+        // FEED TOOL RESULTS BACK AS USER MESSAGE (for model only, not displayed in UI)
         const toolResultMessage: Message = {
           role: 'user',
           content: `Tool results:\n${toolResults.join('\n\n')}`,
@@ -1159,8 +1159,9 @@ Now help the user build some cool shit.`;
         });
         conversationHistory = [...conversationHistory, ...nonEmptyMessages, toolResultMessage];
 
-        // Update UI with tool results
-        setMessages([...conversationHistory]);
+        // Update UI - exclude the tool result message from display (user already saw individual tool outputs)
+        // This prevents showing "Tool results:" as a user message in the UI
+        setMessages([...conversationHistory.slice(0, -1)]);
 
         // Continue the loop - Claude will see the tool results and respond
       }
