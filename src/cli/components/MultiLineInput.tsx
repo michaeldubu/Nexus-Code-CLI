@@ -47,30 +47,29 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
     (input, key) => {
       if (disabled) return;
 
-      // Check for newline character (Shift+Enter produces '\n' in some terminals)
-      if (input === '\n' || (input === '\r' && key.shift)) {
+      // Shift+Enter = Submit (send the message)
+      if (key.return && key.shift) {
+        handleSubmit();
+        return;
+      }
+
+      // Regular Enter = New line (normal multiline behavior)
+      if (key.return) {
         const newValue =
           value.slice(0, cursorOffset) + '\n' + value.slice(cursorOffset);
         onChange(newValue);
         setCursorOffset(cursorOffset + 1);
-        setShowFullContent(true); // Show full when user edits
-        return;
-      }
-
-      // Backslash+Enter = New line (like Claude Code! 🔥)
-      if (key.return && value[cursorOffset - 1] === '\\') {
-        // Remove the backslash and add newline
-        const newValue =
-          value.slice(0, cursorOffset - 1) + '\n' + value.slice(cursorOffset);
-        onChange(newValue);
-        setCursorOffset(cursorOffset);
         setShowFullContent(true);
         return;
       }
 
-      // Regular Enter = Submit (send the message)
-      if (key.return) {
-        handleSubmit();
+      // Check for newline character pasted directly (some terminals)
+      if (input === '\n') {
+        const newValue =
+          value.slice(0, cursorOffset) + '\n' + value.slice(cursorOffset);
+        onChange(newValue);
+        setCursorOffset(cursorOffset + 1);
+        setShowFullContent(true);
         return;
       }
 
@@ -380,7 +379,7 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
       {/* Help text */}
       <Box marginTop={1}>
         <Text color="gray" dimColor>
-          Enter = send | \+Enter = new line | ↑↓←→ = navigate | Home/End = line start/end
+          Enter = new line | Shift+Enter = send | ↑↓←→ = navigate | Home/End = line start/end
         </Text>
       </Box>
 
