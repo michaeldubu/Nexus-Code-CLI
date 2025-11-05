@@ -99,6 +99,10 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   const [selectedModels, setSelectedModels] = useState<string[]>([modelManager.getCurrentModel()]);
   const [modelCursorIndex, setModelCursorIndex] = useState(0);
 
+  // Check if ANY selected model supports thinking or reasoning (for multi-model sessions)
+  const anyModelSupportsThinking = selectedModels.some((id) => AVAILABLE_MODELS[id]?.supportsThinking);
+  const anyModelSupportsReasoning = selectedModels.some((id) => AVAILABLE_MODELS[id]?.supportsReasoning);
+
   // Chaos mode easter egg (parallel streaming)
   const [chaosMode, setChaosMode] = useState(false);
 
@@ -458,17 +462,27 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       return;
     }
 
-    // Tab key for thinking/reasoning toggle
-    if (key.tab && !activeDialog) {
-      const config = modelManager.getModelConfig();
-      if (config.supportsThinking) {
+    // Tab key for thinking toggle (if any model supports it)
+    if (key.tab && !activeDialog && !key.shift) {
+      if (anyModelSupportsThinking) {
         modelManager.toggleThinking();
         // Force re-render to update status display
         setMessages(prev => [...prev]);
-      } else if (config.supportsReasoning) {
-        modelManager.toggleReasoning();
-        // Force re-render to update status display
-        setMessages(prev => [...prev]);
+      }
+    }
+
+    // Ctrl+R or r key for reasoning toggle (if any model supports it)
+    if ((key.ctrl && input === 'r') && !activeDialog) {
+      if (anyModelSupportsReasoning) {
+        const newLevel = modelManager.toggleReasoning();
+        setMessages([
+          ...messages,
+          {
+            role: 'system' as const,
+            content: `🧠 Reasoning effort: ${newLevel === 'off' ? 'OFF' : newLevel.toUpperCase()}`,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
       }
     }
   });
@@ -505,7 +519,8 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
               '  Examples: /sonnet4.5, /gpt4.1, /opus4, /gemini\n\n' +
               '💡 Tips:\n' +
               '  • Type "/" to see full autocomplete\n' +
-              '  • Tab = toggle thinking/reasoning\n' +
+              '  • Tab = toggle thinking (Claude)\n' +
+              '  • Ctrl+R = toggle reasoning effort (GPT)\n' +
               '  • ↑↓ = navigate autocomplete\n' +
               '  • Esc = cancel/close dialogs',
             timestamp: new Date().toISOString(),
@@ -1402,7 +1417,7 @@ Now help the user build some cool shit.`;
         <Text color="orange" dimColor>
           {isProcessing
             ? 'Press ESC to interrupt stream'
-            : '/ = commands | ↑↓ = navigate | Tab = thinking | Esc = cancel | /help = all commands & quick switches'
+            : '/ = commands | ↑↓ = navigate | Tab = thinking | Ctrl+R = reasoning | Esc = cancel | /help = all commands & quick switches'
           }
         </Text>
       </Box>
@@ -1413,8 +1428,8 @@ Now help the user build some cool shit.`;
           models={modelNames}
           workingDir={fileTools.getWorkingDirectory()}
           messageCount={messages.filter((m) => m.role !== 'system').length}
-          thinkingEnabled={config.supportsThinking ? modelManager.isThinkingEnabled() : undefined}
-          reasoningLevel={config.supportsReasoning ? modelManager.getReasoningEffort() : undefined}
+          thinkingEnabled={anyModelSupportsThinking ? modelManager.isThinkingEnabled() : undefined}
+          reasoningLevel={anyModelSupportsReasoning ? modelManager.getReasoningEffort() : undefined}
           mode={editingMode}
           mcpConnected={mcpManager?.isReady()}
         />
