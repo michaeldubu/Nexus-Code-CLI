@@ -33,7 +33,7 @@ const BASE_COMMANDS: Command[] = [
   { name: '/analyze', description: '🔬 Deep dive into a specific file (complexity, deps, etc.)' },
   { name: '/bashes', description: 'List and manage background tasks' },
   { name: '/caching', description: '💾 Toggle prompt caching (90% cost savings on repeated prompts)' },
-  { name: '/chaos', description: '🎭 Enable parallel chaos mode (all models respond simultaneously)' },
+  // /chaos - hidden easter egg (not advertised, still works)
   { name: '/clear', description: 'Clear conversation history and free up context' },
   { name: '/compact', description: 'Clear conversation history but keep a summary in memory. Optional: /compact <instructions> for summarization' },
   { name: '/complex', description: '⚠️  Show files with high complexity' },
@@ -465,18 +465,31 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       return;
     }
 
-    // Tab key for thinking/reasoning toggle
-    if (key.tab && !activeDialog) {
-      const config = modelManager.getModelConfig();
-      if (config.supportsThinking) {
+    // Tab key for thinking toggle
+    if (key.tab && !activeDialog && !key.shift) {
+      // Check if ANY selected model supports thinking
+      const anyModelSupportsThinking = selectedModels.some((id) => AVAILABLE_MODELS[id]?.supportsThinking);
+      if (anyModelSupportsThinking) {
         modelManager.toggleThinking();
         // Force re-render to update status display
         setMessages(prev => [...prev]);
-      } else if (config.supportsReasoning) {
-        modelManager.toggleReasoning();
-        // Force re-render to update status display
-        setMessages(prev => [...prev]);
       }
+      return;
+    }
+
+    // Ctrl+R for reasoning toggle
+    if (key.ctrl && input === 'r' && !activeDialog) {
+      // Check if ANY selected model supports reasoning
+      const anyModelSupportsReasoning = selectedModels.some((id) => AVAILABLE_MODELS[id]?.supportsReasoning);
+      if (anyModelSupportsReasoning) {
+        const newLevel = modelManager.toggleReasoning();
+        setMessages([...messages, {
+          role: 'system' as const,
+          content: `🧠 Reasoning effort: ${newLevel === 'off' ? 'OFF' : newLevel.toUpperCase()}`,
+          timestamp: new Date().toISOString(),
+        }]);
+      }
+      return;
     }
   });
 
@@ -1466,6 +1479,17 @@ Now help the user build some cool shit.`;
           } else if (event.type === 'complete' && event.message) {
             currentStreamingMessages.delete(event.modelId);
             completedMessages.push(event.message);
+          } else if (event.type === 'error') {
+            // Handle model errors gracefully - don't kill entire flow
+            currentStreamingMessages.delete(event.modelId);
+            const errorMsg = `❌ ${event.modelName} Error: ${event.error}`;
+            completedMessages.push({
+              role: 'assistant' as const,
+              content: errorMsg,
+              model: event.modelName,
+              timestamp: new Date().toISOString(),
+            });
+            console.error(`\n${errorMsg}\n`);
           }
         }
 
@@ -1553,7 +1577,7 @@ Now help the user build some cool shit.`;
           }
         }
 
-        // FEED TOOL RESULTS BACK AS USER MESSAGE
+        // FEED TOOL RESULTS BACK AS USER MESSAGE (for model only, not displayed in UI)
         const toolResultMessage: Message = {
           role: 'user',
           content: `Tool results:\n${toolResults.join('\n\n')}`,
@@ -1570,8 +1594,8 @@ Now help the user build some cool shit.`;
         });
         conversationHistory = [...conversationHistory, ...nonEmptyMessages, toolResultMessage];
 
-        // Update UI with tool results
-        setMessages([...conversationHistory]);
+        // Update UI - exclude the tool result message from display (individual tool outputs already shown)
+        setMessages([...conversationHistory.slice(0, -1)]);
 
         // Continue the loop - Agents will see the tool results and respond
       }

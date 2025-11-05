@@ -524,9 +524,15 @@ export class UnifiedModelManager {
         this.interleavedThinkingEnabled = false;
       }
 
-      // Disable reasoning if new model doesn't support it
-      if (!newConfig.supportsReasoning && oldConfig.supportsReasoning) {
-        // Don't reset reasoningEffort, just don't use it
+      // Auto-adjust reasoning effort based on new model's capabilities
+      if (newConfig.supportsReasoning) {
+        // Use the new model's default reasoning effort if it has one
+        if (newConfig.reasoningEffort) {
+          this.reasoningEffort = newConfig.reasoningEffort;
+        }
+      } else if (oldConfig.supportsReasoning) {
+        // New model doesn't support reasoning - keep current setting but it won't be used
+        console.log('⚠️  New model does not support reasoning');
       }
 
       // Disable computer use if new model doesn't support it
