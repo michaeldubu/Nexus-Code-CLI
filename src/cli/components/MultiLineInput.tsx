@@ -21,6 +21,9 @@ interface MultiLineInputProps {
   onSubmit: (content: ContentBlock[]) => void;
   placeholder?: string;
   disabled?: boolean;
+  history?: string[]; // Command history for up/down navigation
+  historyIndex?: number;
+  onHistoryChange?: (index: number) => void;
 }
 
 export const MultiLineInput: React.FC<MultiLineInputProps> = ({
@@ -29,168 +32,163 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
   onSubmit,
   placeholder = 'Type your message...',
   disabled = false,
+  history = [],
+  historyIndex = -1,
+  onHistoryChange,
 }) => {
-  const [cursorOffset, setCursorOffset] = useState(value.length); // Start at end
+  const [cursorOffset, setCursorOffset] = useState(0);
   const [attachedFiles, setAttachedFiles] = useState<ContentBlock[]>([]);
-  const [showFullContent, setShowFullContent] = useState(true); // For paste truncation
+  const [lastInputLength, setLastInputLength] = useState(0);
 
-  // Sync cursor with value length when value changes externally (like after submit)
-  React.useEffect(() => {
-    if (value === '') {
-      setCursorOffset(0);
-      setShowFullContent(true);
+  // Safety net: keep cursor within bounds when value changes externally
+  useEffect(() => {
+    if (cursorOffset > value.length) {
+      setCursorOffset(value.length);
     }
-  }, [value]);
+  }, [value.length]);
 
   // Handle keyboard input
   useInput(
     (input, key) => {
       if (disabled) return;
 
-      // Shift+Enter = New line (for multiline input)
+      // Ctrl+D = Remove last attachment
+      if (key.ctrl && input === 'd' && attachedFiles.length > 0) {
+        setAttachedFiles(prev => prev.slice(0, -1));
+        return;
+      }
+
+      // Shift+Enter = newline (the CORRECT way)
       if (key.return && key.shift) {
         const newValue =
           value.slice(0, cursorOffset) + '\n' + value.slice(cursorOffset);
         onChange(newValue);
         setCursorOffset(cursorOffset + 1);
-        setShowFullContent(true);
         return;
       }
 
-      // Regular Enter = SEND (submit the message) - like chat apps!
+      // Backslash+Enter = newline (bandaid, but keeping it since it works)
+      if (key.return && value[cursorOffset - 1] === '\\') {
+        // Remove the backslash and add newline
+        const newValue =
+          value.slice(0, cursorOffset - 1) + '\n' + value.slice(cursorOffset);
+        onChange(newValue);
+        setCursorOffset(cursorOffset);
+        return;
+      }
+
+      // Regular Enter = Submit (send the message)
       if (key.return) {
         handleSubmit();
         return;
       }
 
-      // Check for newline character pasted directly (some terminals)
-      if (input === '\n') {
-        const newValue =
-          value.slice(0, cursorOffset) + '\n' + value.slice(cursorOffset);
-        onChange(newValue);
-        setCursorOffset(cursorOffset + 1);
-        setShowFullContent(true);
-        return;
-      }
-
-      // Backspace (backward delete)
-      if (key.backspace) {
+      // Backspace - delete character BEFORE cursor
+      // Note: Most terminals send backspace as charCode 127, which Ink interprets as key.delete
+      // So we treat both key.backspace and key.delete as backwards delete (like the original)
+      if (key.backspace || key.delete) {
         if (cursorOffset > 0) {
           const newValue =
             value.slice(0, cursorOffset - 1) + value.slice(cursorOffset);
           onChange(newValue);
           setCursorOffset(cursorOffset - 1);
-          setShowFullContent(true);
         }
         return;
       }
 
-      // Delete (forward delete)
-      if (key.delete) {
-        if (cursorOffset < value.length) {
-          const newValue =
-            value.slice(0, cursorOffset) + value.slice(cursorOffset + 1);
-          onChange(newValue);
-          setShowFullContent(true);
-          // Cursor stays in same position
-        }
+      // Arrow keys for cursor movement
+      if (key.leftArrow && cursorOffset > 0) {
+        setCursorOffset(cursorOffset - 1);
         return;
       }
 
-      // Arrow keys for cursor movement - SIMPLIFIED!
-      if (key.leftArrow) {
-        setCursorOffset(Math.max(0, cursorOffset - 1));
-        return;
-      }
-
-      if (key.rightArrow) {
-        setCursorOffset(Math.min(value.length, cursorOffset + 1));
+      if (key.rightArrow && cursorOffset < value.length) {
+        setCursorOffset(cursorOffset + 1);
         return;
       }
 
       if (key.upArrow) {
-        // Move cursor up one line
-        const beforeCursor = value.slice(0, cursorOffset);
-        const lines = beforeCursor.split('\n');
+        const lines = value.split('\n');
+        const currentLineIndex = value.slice(0, cursorOffset).split('\n').length - 1;
 
-        if (lines.length > 1) {
-          // Get current position in line
-          const currentLineStart = beforeCursor.lastIndexOf('\n', cursorOffset - 1);
-          const currentCol = cursorOffset - currentLineStart - 1;
-
-          // Find previous line start
-          const prevLineEnd = currentLineStart;
-          const prevLineStart = beforeCursor.lastIndexOf('\n', prevLineEnd - 1);
-          const prevLineLength = prevLineEnd - prevLineStart - 1;
-
-          // Move to same column in previous line (or end if shorter)
-          const targetCol = Math.min(currentCol, prevLineLength);
-          const newOffset = prevLineStart + 1 + targetCol;
-
+        // If on first line and we have history, navigate history
+        if (currentLineIndex === 0 && history.length > 0 && onHistoryChange) {
+          const newIndex = historyIndex === -1 ? history.length - 1 : Math.max(0, historyIndex - 1);
+          onHistoryChange(newIndex);
+          if (history[newIndex]) {
+            onChange(history[newIndex]);
+            setCursorOffset(history[newIndex].length);
+          }
+        } else if (currentLineIndex > 0) {
+          // Move cursor to previous line within multi-line input
+          const linesBefore = value.slice(0, cursorOffset).split('\n');
+          const currentLinePos = linesBefore[linesBefore.length - 1].length;
+          const prevLineLength = linesBefore[linesBefore.length - 2].length;
+          const newOffset = cursorOffset - currentLinePos - 1 - Math.min(currentLinePos, prevLineLength);
           setCursorOffset(Math.max(0, newOffset));
         }
         return;
       }
 
       if (key.downArrow) {
-        // Move cursor down one line
-        const afterCursor = value.slice(cursorOffset);
-        const nextNewlineIdx = afterCursor.indexOf('\n');
+        const lines = value.split('\n');
+        const currentLineIndex = value.slice(0, cursorOffset).split('\n').length - 1;
 
-        if (nextNewlineIdx !== -1) {
-          // Get current position in line
-          const beforeCursor = value.slice(0, cursorOffset);
-          const currentLineStart = beforeCursor.lastIndexOf('\n') + 1;
-          const currentCol = cursorOffset - currentLineStart;
+        // If on last line and we have history, navigate forward
+        if (currentLineIndex === lines.length - 1 && history.length > 0 && onHistoryChange) {
+          if (historyIndex === -1) return; // Already at current input
 
-          // Find next line
-          const nextLineStart = cursorOffset + nextNewlineIdx + 1;
-          const restOfText = value.slice(nextLineStart);
-          const nextLineEnd = restOfText.indexOf('\n');
-          const nextLineLength = nextLineEnd !== -1 ? nextLineEnd : restOfText.length;
-
-          // Move to same column in next line (or end if shorter)
-          const targetCol = Math.min(currentCol, nextLineLength);
-          const newOffset = nextLineStart + targetCol;
-
-          setCursorOffset(Math.min(value.length, newOffset));
+          const newIndex = historyIndex + 1;
+          if (newIndex >= history.length) {
+            // Return to current input
+            onHistoryChange(-1);
+            onChange('');
+            setCursorOffset(0);
+          } else {
+            onHistoryChange(newIndex);
+            if (history[newIndex]) {
+              onChange(history[newIndex]);
+              setCursorOffset(history[newIndex].length);
+            }
+          }
+        } else {
+          // Move cursor to next line within multi-line input
+          const afterCursor = value.slice(cursorOffset);
+          const nextNewline = afterCursor.indexOf('\n');
+          if (nextNewline !== -1) {
+            const linesBefore = value.slice(0, cursorOffset).split('\n');
+            const currentLinePos = linesBefore[linesBefore.length - 1].length;
+            const nextLine = afterCursor.slice(nextNewline + 1);
+            const nextNewline2 = nextLine.indexOf('\n');
+            const nextLineLength = nextNewline2 !== -1 ? nextNewline2 : nextLine.length;
+            const newOffset = cursorOffset + nextNewline + 1 + Math.min(currentLinePos, nextLineLength);
+            setCursorOffset(Math.min(value.length, newOffset));
+          }
         }
-        return;
-      }
-
-      // Home key - start of line
-      if (key.home) {
-        const beforeCursor = value.slice(0, cursorOffset);
-        const lineStart = beforeCursor.lastIndexOf('\n') + 1;
-        setCursorOffset(lineStart);
-        return;
-      }
-
-      // End key - end of line
-      if (key.end) {
-        const afterCursor = value.slice(cursorOffset);
-        const lineEnd = afterCursor.indexOf('\n');
-        const newOffset = lineEnd === -1 ? value.length : cursorOffset + lineEnd;
-        setCursorOffset(newOffset);
         return;
       }
 
       // Regular character input
       if (input && !key.ctrl && !key.meta) {
-        // Detect large paste (>100 chars at once)
-        const isPaste = input.length > 100;
+        // Detect paste (large input at once)
+        const isPaste = input.length > 50; // More than 50 chars = probably a paste
+        const pastedLines = input.split('\n');
+        const isPasteMultiline = pastedLines.length > 3;
+
+        let finalInput = input;
+
+        // Wrap large pastes in [Pasted X Lines] format
+        if (isPaste && isPasteMultiline) {
+          finalInput = `[Pasted ${pastedLines.length} Lines]\n${input}`;
+        }
 
         const newValue =
-          value.slice(0, cursorOffset) + input + value.slice(cursorOffset);
-        onChange(newValue);
-        setCursorOffset(cursorOffset + input.length);
+          value.slice(0, cursorOffset) + finalInput + value.slice(cursorOffset);
+        const newCursor = cursorOffset + finalInput.length;
 
-        // If large paste, hide full content initially
-        if (isPaste) {
-          setShowFullContent(false);
-        } else {
-          setShowFullContent(true);
-        }
+        onChange(newValue);
+        setCursorOffset(newCursor);
+        setLastInputLength(newValue.length);
 
         // Auto-detect file paths when user types/pastes them
         // Look for patterns like /path/to/file.png or ./relative/path.jpg
@@ -293,37 +291,17 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
     }
   };
 
-  // Determine display value (truncated for large pastes)
-  let displayValue = value;
-  let isTruncated = false;
-
-  if (!showFullContent && value.length > 0) {
-    const lines = value.split('\n');
-    if (lines.length > 10) {
-      // Show first 3 lines and last 2 lines with summary in between
-      const firstLines = lines.slice(0, 3).join('\n');
-      const lastLines = lines.slice(-2).join('\n');
-      const lineCount = lines.length;
-      displayValue = `${firstLines}\n\n[pasted content...${lineCount} lines]\n\n${lastLines}`;
-      isTruncated = true;
-    } else if (value.length > 500) {
-      // Just show first 500 chars
-      displayValue = value.substring(0, 500) + `\n\n[pasted content...${value.length} chars]`;
-      isTruncated = true;
-    }
-  }
-
   // Split value into lines for display
-  const lines = displayValue.split('\n');
-  const currentLine = isTruncated ? 0 : value.slice(0, cursorOffset).split('\n').length - 1;
-  const currentColumn = isTruncated ? 0 : value.slice(0, cursorOffset).split('\n').pop()?.length || 0;
+  const lines = value.split('\n');
+  const currentLine = value.slice(0, cursorOffset).split('\n').length - 1;
+  const currentColumn = value.slice(0, cursorOffset).split('\n').pop()?.length || 0;
 
   return (
     <Box flexDirection="column">
       {/* Attached files preview */}
       {attachedFiles.length > 0 && (
         <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="cyan" paddingX={1}>
-          <Text color="cyan" bold>📎 Attachments ({attachedFiles.length}):</Text>
+          <Text color="cyan" bold>📎 Attachments ({attachedFiles.length}) - Ctrl+D to remove last</Text>
           {attachedFiles.map((file, idx) => (
             <Box key={idx} marginLeft={2}>
               <Text color="gray">
@@ -334,30 +312,20 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
         </Box>
       )}
 
-      {/* Truncation hint */}
-      {isTruncated && (
-        <Box marginBottom={1}>
-          <Text color="yellow" dimColor>
-            💡 Large content pasted - showing preview. Full content will be sent. (Start typing to see all)
-          </Text>
-        </Box>
-      )}
-
       {/* Input area */}
       <Box flexDirection="column" borderStyle="round" borderColor="orange" paddingX={1}>
         {lines.map((line, idx) => {
-          // Render line with cursor if this is the current line (only when not truncated)
-          if (!isTruncated && idx === currentLine) {
+          // Render line with cursor if this is the current line
+          if (idx === currentLine) {
             const beforeCursor = line.slice(0, currentColumn);
-            const atCursor = line[currentColumn] || ' ';
-            const afterCursor = line.slice(currentColumn + 1);
+            const afterCursor = line.slice(currentColumn);
 
             return (
               <Box key={idx}>
                 <Text color="orange" bold>{idx === 0 ? '> ' : '  '}</Text>
                 <Text color="white">
                   {beforeCursor}
-                  <Text backgroundColor="orange" color="black">{atCursor}</Text>
+                  <Text color="green" bold>▋</Text>
                   {afterCursor}
                 </Text>
               </Box>
@@ -379,22 +347,15 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
       {/* Help text */}
       <Box marginTop={1}>
         <Text color="gray" dimColor>
-          Enter = send | Shift+Enter = new line | ↑↓←→ = navigate | Home/End = line start/end
+          Enter = send | \+Enter = new line | Esc = cancel
         </Text>
       </Box>
 
       {/* Line info */}
-      {!isTruncated && lines.length > 1 && (
+      {lines.length > 1 && (
         <Box marginTop={0}>
           <Text color="gray" dimColor>
-            Line {currentLine + 1}/{lines.length}, Col {currentColumn + 1} | {value.length} chars
-          </Text>
-        </Box>
-      )}
-      {isTruncated && (
-        <Box marginTop={0}>
-          <Text color="gray" dimColor>
-            {value.split('\n').length} lines, {value.length} chars (preview mode)
+            Line {currentLine + 1}, Col {currentColumn + 1} | {value.length} chars
           </Text>
         </Box>
       )}
