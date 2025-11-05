@@ -67,8 +67,8 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'claude-haiku-4-5-20251001',
     name: 'Claude Haiku 4.5',
     provider: 'anthropic',
-    supportsThinking: false,
-    supportsInterleavedThinking: false,
+    supportsThinking: true, // First Haiku with extended thinking!
+    supportsInterleavedThinking: true,
     supportsComputerUse: true,
     supportsPromptCaching: true,
     maxTokens: 64000,
