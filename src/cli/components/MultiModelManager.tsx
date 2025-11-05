@@ -105,13 +105,14 @@ export async function* streamMultiModelMessage(
   activeAgents: string[],
   tools?: any[]
 ): AsyncGenerator<{
-  type: 'start' | 'chunk' | 'complete' | 'tool_call';
+  type: 'start' | 'chunk' | 'complete' | 'error' | 'tool_call';
   modelId: string;
   modelName: string;
   content?: string;
   thinking?: string;
   isThinking?: boolean;
   toolCall?: any;
+  error?: string;
   message?: Message & { model: string; agent?: string; timestamp: string };
 }> {
   const enhancedPrompt = buildEnhancedSystemPrompt(systemPrompt, activeAgents);
@@ -123,58 +124,66 @@ export async function* streamMultiModelMessage(
       if (activeModels.length > 0) {
         const modelId = activeModels[0];
         const modelName = AVAILABLE_MODELS[modelId]?.name || modelId;
-        // Only switch if different model - prevents resetting thinking state
-        if (modelManager.getCurrentModel() !== modelId) {
+
+        try {
           modelManager.setModel(modelId);
-        }
+          yield { type: 'start', modelId, modelName };
 
-        yield { type: 'start', modelId, modelName };
+          let fullContent = '';
+          let fullThinking = '';
 
-        let fullContent = '';
-        let fullThinking = '';
-
-        for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt, tools })) {
-          if (chunk.type === 'text') {
-            fullContent += chunk.content;
-            yield {
-              type: 'chunk',
-              modelId,
-              modelName,
-              content: chunk.content,
-              isThinking: false,
-            };
-          } else if (chunk.type === 'thinking' || chunk.type === 'reasoning') {
-            fullThinking += chunk.content;
-            yield {
-              type: 'chunk',
-              modelId,
-              modelName,
-              thinking: chunk.content,
-              isThinking: true,
-            };
-          } else if (chunk.type === 'tool_call' && chunk.toolCall) {
-            yield {
-              type: 'tool_call',
-              modelId,
-              modelName,
-              toolCall: chunk.toolCall,
-            };
+          for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt, tools })) {
+            if (chunk.type === 'text') {
+              fullContent += chunk.content;
+              yield {
+                type: 'chunk',
+                modelId,
+                modelName,
+                content: chunk.content,
+                isThinking: false,
+              };
+            } else if (chunk.type === 'thinking' || chunk.type === 'reasoning') {
+              fullThinking += chunk.content;
+              yield {
+                type: 'chunk',
+                modelId,
+                modelName,
+                thinking: chunk.content,
+                isThinking: true,
+              };
+            } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+              yield {
+                type: 'tool_call',
+                modelId,
+                modelName,
+                toolCall: chunk.toolCall,
+              };
+            }
           }
-        }
 
-        yield {
-          type: 'complete',
-          modelId,
-          modelName,
-          message: {
-            role: 'assistant',
-            content: fullContent,
-            thinking: fullThinking || undefined,
-            model: modelName,
-            agent: agentEmojis || undefined,
-            timestamp: new Date().toISOString(),
-          },
-        };
+          yield {
+            type: 'complete',
+            modelId,
+            modelName,
+            message: {
+              role: 'assistant',
+              content: fullContent,
+              thinking: fullThinking || undefined,
+              model: modelName,
+              agent: agentEmojis || undefined,
+              timestamp: new Date().toISOString(),
+            },
+          };
+        } catch (error: any) {
+          // Gracefully handle model errors
+          const errorMessage = error?.message || String(error);
+          yield {
+            type: 'error',
+            modelId,
+            modelName,
+            error: errorMessage,
+          };
+        }
       }
       break;
 
@@ -183,63 +192,72 @@ export async function* streamMultiModelMessage(
       let workingHistory = [...conversationHistory];
       for (const modelId of activeModels) {
         const modelName = AVAILABLE_MODELS[modelId]?.name || modelId;
-        // Only switch if different model - prevents resetting thinking state
-        if (modelManager.getCurrentModel() !== modelId) {
+
+        try {
           modelManager.setModel(modelId);
-        }
+          yield { type: 'start', modelId, modelName };
 
-        yield { type: 'start', modelId, modelName };
+          let fullContent = '';
+          let fullThinking = '';
 
-        let fullContent = '';
-        let fullThinking = '';
-
-        for await (const chunk of modelManager.streamMessage(workingHistory, { systemPrompt: enhancedPrompt, tools })) {
-          if (chunk.type === 'text') {
-            fullContent += chunk.content;
-            yield {
-              type: 'chunk',
-              modelId,
-              modelName,
-              content: chunk.content,
-              isThinking: false,
-            };
-          } else if (chunk.type === 'thinking' || chunk.type === 'reasoning') {
-            fullThinking += chunk.content;
-            yield {
-              type: 'chunk',
-              modelId,
-              modelName,
-              thinking: chunk.content,
-              isThinking: true,
-            };
-          } else if (chunk.type === 'tool_call' && chunk.toolCall) {
-            yield {
-              type: 'tool_call',
-              modelId,
-              modelName,
-              toolCall: chunk.toolCall,
-            };
+          for await (const chunk of modelManager.streamMessage(workingHistory, { systemPrompt: enhancedPrompt, tools })) {
+            if (chunk.type === 'text') {
+              fullContent += chunk.content;
+              yield {
+                type: 'chunk',
+                modelId,
+                modelName,
+                content: chunk.content,
+                isThinking: false,
+              };
+            } else if (chunk.type === 'thinking' || chunk.type === 'reasoning') {
+              fullThinking += chunk.content;
+              yield {
+                type: 'chunk',
+                modelId,
+                modelName,
+                thinking: chunk.content,
+                isThinking: true,
+              };
+            } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+              yield {
+                type: 'tool_call',
+                modelId,
+                modelName,
+                toolCall: chunk.toolCall,
+              };
+            }
           }
+
+          const assistantMsg = {
+            role: 'assistant' as const,
+            content: fullContent,
+            thinking: fullThinking || undefined,
+            model: modelName,
+            agent: agentEmojis || undefined,
+            timestamp: new Date().toISOString(),
+          };
+
+          yield {
+            type: 'complete',
+            modelId,
+            modelName,
+            message: assistantMsg,
+          };
+
+          // Add to history for next model
+          workingHistory = [...workingHistory, assistantMsg];
+        } catch (error: any) {
+          // Gracefully handle model errors - continue to next model
+          const errorMessage = error?.message || String(error);
+          yield {
+            type: 'error',
+            modelId,
+            modelName,
+            error: errorMessage,
+          };
+          // Continue to next model instead of crashing
         }
-
-        const assistantMsg = {
-          role: 'assistant' as const,
-          content: fullContent,
-          thinking: fullThinking || undefined,
-          model: modelName,
-          agent: agentEmojis || undefined,
-          timestamp: new Date().toISOString(),
-        };
-
-        yield {
-          type: 'complete',
-          modelId,
-          modelName,
-          message: assistantMsg,
-        };
-
-        // Add to history for next model
-        workingHistory = [...workingHistory, assistantMsg];
       }
       break;
 
@@ -248,58 +266,67 @@ export async function* streamMultiModelMessage(
       // Stream from all models (sequential processes one at a time, parallel would be more complex)
       for (const modelId of activeModels) {
         const modelName = AVAILABLE_MODELS[modelId]?.name || modelId;
-        // Only switch if different model - prevents resetting thinking state
-        if (modelManager.getCurrentModel() !== modelId) {
+
+        try {
           modelManager.setModel(modelId);
-        }
+          yield { type: 'start', modelId, modelName };
 
-        yield { type: 'start', modelId, modelName };
+          let fullContent = '';
+          let fullThinking = '';
 
-        let fullContent = '';
-        let fullThinking = '';
-
-        for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt, tools })) {
-          if (chunk.type === 'text') {
-            fullContent += chunk.content;
-            yield {
-              type: 'chunk',
-              modelId,
-              modelName,
-              content: chunk.content,
-              isThinking: false,
-            };
-          } else if (chunk.type === 'thinking' || chunk.type === 'reasoning') {
-            fullThinking += chunk.content;
-            yield {
-              type: 'chunk',
-              modelId,
-              modelName,
-              thinking: chunk.content,
-              isThinking: true,
-            };
-          } else if (chunk.type === 'tool_call' && chunk.toolCall) {
-            yield {
-              type: 'tool_call',
-              modelId,
-              modelName,
-              toolCall: chunk.toolCall,
-            };
+          for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt, tools })) {
+            if (chunk.type === 'text') {
+              fullContent += chunk.content;
+              yield {
+                type: 'chunk',
+                modelId,
+                modelName,
+                content: chunk.content,
+                isThinking: false,
+              };
+            } else if (chunk.type === 'thinking' || chunk.type === 'reasoning') {
+              fullThinking += chunk.content;
+              yield {
+                type: 'chunk',
+                modelId,
+                modelName,
+                thinking: chunk.content,
+                isThinking: true,
+              };
+            } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+              yield {
+                type: 'tool_call',
+                modelId,
+                modelName,
+                toolCall: chunk.toolCall,
+              };
+            }
           }
-        }
 
-        yield {
-          type: 'complete',
-          modelId,
-          modelName,
-          message: {
-            role: 'assistant',
-            content: fullContent,
-            thinking: fullThinking || undefined,
-            model: modelName,
-            agent: agentEmojis || undefined,
-            timestamp: new Date().toISOString(),
-          },
-        };
+          yield {
+            type: 'complete',
+            modelId,
+            modelName,
+            message: {
+              role: 'assistant',
+              content: fullContent,
+              thinking: fullThinking || undefined,
+              model: modelName,
+              agent: agentEmojis || undefined,
+              timestamp: new Date().toISOString(),
+            },
+          };
+        } catch (error: any) {
+          // Gracefully handle model errors - continue to next model
+          const errorMessage = error?.message || String(error);
+          yield {
+            type: 'error',
+            modelId,
+            modelName,
+            error: errorMessage,
+          };
+          // Continue to next model instead of crashing
+        }
       }
       break;
   }
@@ -421,33 +448,33 @@ export const AgentSelector: React.FC<AgentSelectorProps> = ({
  */
 export const QUICK_SWITCHES: Record<string, string> = {
   // Claude (one shortcut per model)
-  '/sonnet': 'claude-sonnet-4-5-20250929',
-  '/sonnet4': 'claude-sonnet-4-20250514',
-  '/opus': 'claude-opus-4-1-20250805',
-  '/haiku': 'claude-haiku-4-5-20251001',
+  '/s': 'claude-sonnet-4-5-20250929',
+  '/s4': 'claude-sonnet-4-20250514',
+  '/o': 'claude-opus-4-1-20250805',
+  '/h': 'claude-haiku-4-5-20251001',
 
   // OpenAI (all different models)
-  '/gpt5': 'gpt-5',
-  '/gpt5pro': 'gpt-5-pro',
-  '/gpt5mini': 'gpt-5-mini',
-  '/gpt5nano': 'gpt-5-nano',
-  '/gpt5codex': 'gpt-5-codex',
+  '/g5': 'gpt-5',
+  '/g5p': 'gpt-5-pro',
+  '/g5m': 'gpt-5-mini',
+  '/g5n': 'gpt-5-nano',
+  '/g5c': 'gpt-5-codex',
   '/codex': 'codex-mini-latest',
-  '/gpt41': 'gpt-4.1',
-  '/gpt41mini': 'gpt-4.1-mini',
-  '/gpt4o': 'gpt-4o',
-  '/gpt4osearch': 'gpt-4o-search-preview',
-  '/gpt4omini': 'gpt-4o-mini',
+  '/g4': 'gpt-4.1',
+  '/g4m': 'gpt-4.1-mini',
+  '/g4o': 'gpt-4o',
+  '/g4os': 'gpt-4o-search-preview',
+  '/g4om': 'gpt-4o-mini',
   '/o1': 'o1',
-  '/o1pro': 'o1-pro',
+  '/o1p': 'o1-pro',
   '/o3': 'o3',
-  '/o3pro': 'o3-pro',
-  '/o3mini': 'o3-mini',
-  '/o4mini': 'o4-mini',
-  '/o4research': 'o4-mini-deep-research',
+  '/o3p': 'o3-pro',
+  '/o3m': 'o3-mini',
+  '/o4': 'o4-mini',
+  '/o4dr': 'o4-mini-deep-research',
 
   // Gemini
-  '/gemini': 'gemini-2-0-flash-thinking-exp-01-21',
+  '/gem': 'gemini-2-0-flash-thinking-exp-01-21',
 };
 
 export function handleQuickSwitch(

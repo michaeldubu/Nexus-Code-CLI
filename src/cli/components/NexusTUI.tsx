@@ -33,7 +33,7 @@ const BASE_COMMANDS: Command[] = [
   { name: '/analyze', description: '🔬 Deep dive into a specific file (complexity, deps, etc.)' },
   { name: '/bashes', description: 'List and manage background tasks' },
   { name: '/caching', description: '💾 Toggle prompt caching (90% cost savings on repeated prompts)' },
-  { name: '/chaos', description: '🎭 Enable parallel chaos mode (all models respond simultaneously)' },
+  // /chaos - hidden easter egg (not advertised, still works)
   { name: '/clear', description: 'Clear conversation history and free up context' },
   { name: '/compact', description: 'Clear conversation history but keep a summary in memory. Optional: /compact <instructions> for summarization' },
   { name: '/complex', description: '⚠️  Show files with high complexity' },
@@ -112,6 +112,10 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   // Model selection state
   const [selectedModels, setSelectedModels] = useState<string[]>([modelManager.getCurrentModel()]);
   const [modelCursorIndex, setModelCursorIndex] = useState(0);
+
+  // Check if ANY selected model supports thinking or reasoning (for multi-model sessions)
+  const anyModelSupportsThinking = selectedModels.some((id) => AVAILABLE_MODELS[id]?.supportsThinking);
+  const anyModelSupportsReasoning = selectedModels.some((id) => AVAILABLE_MODELS[id]?.supportsReasoning);
 
   // Chaos mode easter egg (parallel streaming)
   const [chaosMode, setChaosMode] = useState(false);
@@ -465,17 +469,27 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       return;
     }
 
-    // Tab key for thinking/reasoning toggle
-    if (key.tab && !activeDialog) {
-      const config = modelManager.getModelConfig();
-      if (config.supportsThinking) {
+    // Tab key for thinking toggle (if any model supports it)
+    if (key.tab && !activeDialog && !key.shift) {
+      if (anyModelSupportsThinking) {
         modelManager.toggleThinking();
         // Force re-render to update status display
         setMessages(prev => [...prev]);
-      } else if (config.supportsReasoning) {
-        modelManager.toggleReasoning();
-        // Force re-render to update status display
-        setMessages(prev => [...prev]);
+      }
+    }
+
+    // Ctrl+R or r key for reasoning toggle (if any model supports it)
+    if ((key.ctrl && input === 'r') && !activeDialog) {
+      if (anyModelSupportsReasoning) {
+        const newLevel = modelManager.toggleReasoning();
+        setMessages([
+          ...messages,
+          {
+            role: 'system' as const,
+            content: `🧠 Reasoning effort: ${newLevel === 'off' ? 'OFF' : newLevel.toUpperCase()}`,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
       }
     }
   });
@@ -505,7 +519,8 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
               '  Examples: /sonnet4.5, /gpt4.1, /opus4, /gemini\n\n' +
               '💡 Tips:\n' +
               '  • Type "/" to see full autocomplete\n' +
-              '  • Tab = toggle thinking/reasoning\n' +
+              '  • Tab = toggle thinking (Claude)\n' +
+              '  • Ctrl+R = toggle reasoning effort (GPT)\n' +
               '  • ↑↓ = navigate autocomplete\n' +
               '  • Esc = cancel/close dialogs',
             timestamp: new Date().toISOString(),
@@ -1414,6 +1429,17 @@ Now help the user build some cool shit.`;
               thinking: '',
               modelName: event.modelName,
             });
+          } else if (event.type === 'error') {
+            // Handle model errors gracefully - display error and continue
+            currentStreamingMessages.delete(event.modelId);
+            const errorMsg = `❌ ${event.modelName} Error: ${event.error}`;
+            completedMessages.push({
+              role: 'assistant' as const,
+              content: errorMsg,
+              model: event.modelName,
+              timestamp: new Date().toISOString(),
+            });
+            console.error(`\n${errorMsg}\n`);
           } else if (event.type === 'tool_call' && event.toolCall) {
             // Collect tool calls
             hasToolCalls = true;
@@ -1553,7 +1579,7 @@ Now help the user build some cool shit.`;
           }
         }
 
-        // FEED TOOL RESULTS BACK AS USER MESSAGE
+        // FEED TOOL RESULTS BACK AS USER MESSAGE (for model only, not displayed in UI)
         const toolResultMessage: Message = {
           role: 'user',
           content: `Tool results:\n${toolResults.join('\n\n')}`,
@@ -1570,8 +1596,9 @@ Now help the user build some cool shit.`;
         });
         conversationHistory = [...conversationHistory, ...nonEmptyMessages, toolResultMessage];
 
-        // Update UI with tool results
-        setMessages([...conversationHistory]);
+        // Update UI - exclude the tool result message from display (user already saw individual tool outputs)
+        // This prevents showing "Tool results:" as a user message in the UI
+        setMessages([...conversationHistory.slice(0, -1)]);
 
         // Continue the loop - Agents will see the tool results and respond
       }
@@ -1835,7 +1862,7 @@ Now help the user build some cool shit.`;
         <Text color="orange" dimColor>
           {isProcessing
             ? 'Press ESC to interrupt stream'
-            : '/ = commands | ↑↓ = navigate | Tab = thinking | Esc = cancel | /help = all commands & quick switches'
+            : '/ = commands | ↑↓ = navigate | Tab = thinking | Ctrl+R = reasoning | Esc = cancel | /help = all commands & quick switches'
           }
         </Text>
       </Box>
@@ -1846,8 +1873,8 @@ Now help the user build some cool shit.`;
           models={modelNames}
           workingDir={fileTools.getWorkingDirectory()}
           messageCount={messages.filter((m) => m.role !== 'system').length}
-          thinkingEnabled={config.supportsThinking ? modelManager.isThinkingEnabled() : undefined}
-          reasoningLevel={config.supportsReasoning ? modelManager.getReasoningEffort() : undefined}
+          thinkingEnabled={anyModelSupportsThinking ? modelManager.isThinkingEnabled() : undefined}
+          reasoningLevel={anyModelSupportsReasoning ? modelManager.getReasoningEffort() : undefined}
           mode={editingMode}
           mcpConnected={mcpManager?.isReady()}
         />

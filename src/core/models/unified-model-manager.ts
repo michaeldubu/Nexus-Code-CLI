@@ -1,61 +1,6 @@
 /**
  * Unified Multi-Model Manager
  * Supports Anthropic, OpenAI, Google Gemini, and Ollama
- *
- * CRITICAL: Tool Use + Thinking Implementation Notes
- * ===================================================
- *
- * When using extended thinking with tool use, several important behaviors must be maintained:
- *
- * 1. THINKING BLOCK PRESERVATION:
- *    - During tool use loops, thinking blocks from the last assistant message must be preserved
- *    - Pass the complete unmodified thinking blocks back to the API with tool results
- *    - Thinking blocks are included in the content array as { type: 'thinking', thinking: '...' }
- *
- * 2. TOOL RESULT STRUCTURE:
- *    Tool results MUST be structured correctly when including system-reminders.
- *    CORRECT structure:
- *    {
- *      "role": "user",
- *      "content": [
- *        {
- *          "tool_use_id": "toolu_01XdVUKZTiWkVoFnuD2mv5oX",
- *          "type": "tool_result",
- *          "content": [
- *            { "type": "text", "text": "Tool result here" },
- *            { "type": "text", "text": "<system-reminder>...</system-reminder>" }
- *          ]
- *        }
- *      ]
- *    }
- *
- *    INCORRECT (causes MCP bug): System-reminders concatenated directly with tool results
- *
- * 3. TOOL_CHOICE LIMITATION:
- *    Tool use with thinking only supports:
- *    - tool_choice: {type: "auto"} (default)
- *    - tool_choice: {type: "none"}
- *    Using tool_choice: {type: "any"} or {type: "tool", name: "..."} will error
- *
- * 4. CONTEXT WINDOW BEHAVIOR:
- *    - Effective context window = input_tokens + current_turn_tokens
- *    - Previous thinking blocks are automatically stripped from context calculations
- *    - When a non-tool-result user block is included, all previous thinking blocks are ignored
- *    - Thinking blocks from previous turns are cached and count as input tokens when read from cache
- *
- * 5. PROMPT CACHING:
- *    - Changes to thinking parameters (enabled/disabled, budget) invalidate cache breakpoints
- *    - Thinking blocks are cached and retrieved efficiently
- *
- * 6. MID-TURN TOGGLES:
- *    - Cannot toggle thinking during an assistant turn (including tool use loops)
- *    - Only toggle thinking between complete assistant turns
- *
- * 7. BETA HEADERS:
- *    - interleaved-thinking-2025-05-14: For interleaved thinking
- *    - context-1m-2025-08-07: For 1M context window (Sonnet 4/4.5)
- *    - prompt-caching-2024-07-31: For prompt caching
- *    - computer-use-2025-01-24: For computer use capability
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -66,16 +11,16 @@ import { mcpToAnthropicTools, mcpToOpenAITools, mcpToGoogleTools } from '../util
 import { ContextWindowManager } from '../utils/context-manager.js';
 import { enablePromptCaching } from '../utils/prompt-caching.js';
 
-export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'ollama'; //TODO add ollama
+export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'ollama';
 
 export interface ModelConfig {
   id: string;
   name: string;
   provider: ModelProvider;
-  supportsThinking?: boolean; // Extended thinking
-  supportsInterleavedThinking?: boolean; // Interleaved thinking (Sonnet 4/4.5 only)
-  supportsComputerUse?: boolean; // Computer use capability
-  supportsPromptCaching?: boolean; // Prompt caching
+  supportsThinking?: boolean; // Extended thinking (budget_tokens)
+  supportsInterleavedThinking?: boolean; // NEW: Interleaved thinking (Sonnet 4 only)
+  supportsComputerUse?: boolean; // NEW: Computer use capability
+  supportsPromptCaching?: boolean; // NEW: Prompt caching
   supportsReasoning?: boolean;
   supportsVision?: boolean;
   reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
@@ -122,8 +67,8 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'claude-haiku-4-5-20251001',
     name: 'Claude Haiku 4.5',
     provider: 'anthropic',
-    supportsThinking: true, // 🔥 HAIKU 4.5 NOW SUPPORTS EXTENDED THINKING!
-    supportsInterleavedThinking: true, // 🔥 Interleaved thinking too!
+    supportsThinking: false,
+    supportsInterleavedThinking: false,
     supportsComputerUse: true,
     supportsPromptCaching: true,
     maxTokens: 64000,
@@ -136,8 +81,8 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'GPT-5',
     provider: 'openai',
     supportsReasoning: true,
-    reasoningEffort: 'low',
-    maxTokens: 32768,
+    reasoningEffort: 'high',
+    maxTokens: 16384,
     contextWindow: 128000,
   },
   'gpt-5-pro': {
@@ -162,8 +107,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'gpt-5-nano',
     name: 'GPT-5 Nano',
     provider: 'openai',
-    supportsReasoning: true,
-    reasoningEffort: 'low',
+    supportsReasoning: false,
     maxTokens: 32768,
     contextWindow: 128000,
   },
@@ -171,8 +115,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'gpt-5-codex',
     name: 'GPT-5 Codex',
     provider: 'openai',
-    supportsReasoning: true,
-    reasoningEffort: 'medium',
+    supportsReasoning: false,
     maxTokens: 32768,
     contextWindow: 128000,
   },
@@ -189,7 +132,6 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'GPT-4.1',
     provider: 'openai',
     supportsReasoning: false,
-    reasoningEffort: 'medium',
     maxTokens: 32768,
     contextWindow: 128000,
   },
@@ -205,8 +147,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'gpt-4o',
     name: 'GPT-4o',
     provider: 'openai',
-    supportsReasoning: true,
-    reasoningEffort: 'medium',
+    supportsReasoning: false,
     supportsVision: true,
     maxTokens: 16384,
     contextWindow: 128000,
@@ -215,8 +156,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'gpt-4o-mini',
     name: 'GPT-4o Mini',
     provider: 'openai',
-    supportsReasoning: true,
-    reasoningEffort: 'medium',
+    supportsReasoning: false,
     supportsVision: true,
     maxTokens: 16384,
     contextWindow: 128000,
@@ -225,8 +165,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'gpt-4o-search-preview',
     name: 'GPT-4o Search',
     provider: 'openai',
-    supportsReasoning: true,
-    reasoningEffort: 'medium',
+    supportsReasoning: false,
     supportsVision: true,
     maxTokens: 16384,
     contextWindow: 128000,
@@ -245,7 +184,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'O1 Pro',
     provider: 'openai',
     supportsReasoning: true,
-    reasoningEffort: 'medium',
+    reasoningEffort: 'high',
     maxTokens: 100000,
     contextWindow: 200000,
   },
@@ -254,7 +193,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'O3',
     provider: 'openai',
     supportsReasoning: true,
-    reasoningEffort: 'medium',
+    reasoningEffort: 'high',
     maxTokens: 100000,
     contextWindow: 200000,
   },
@@ -263,7 +202,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'O3 Pro',
     provider: 'openai',
     supportsReasoning: true,
-    reasoningEffort: 'medium',
+    reasoningEffort: 'high',
     maxTokens: 100000,
     contextWindow: 200000,
   },
@@ -290,7 +229,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'O4 Mini Deep Research',
     provider: 'openai',
     supportsReasoning: true,
-    reasoningEffort: 'medium',
+    reasoningEffort: 'high',
     maxTokens: 65536,
     contextWindow: 200000,
   },
@@ -315,7 +254,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
   },
   'gemini-exp-1206': {
     id: 'gemini-exp-1206',
-    name: 'Gemini 2.0 Pro',
+    name: 'Gemini 2.0 Pro (Exp)',
     provider: 'google',
     supportsVision: true,
     supportsReasoning: true,
@@ -333,7 +272,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
   },
 };
 
-// Content block types
+// Content block types (matching Claude Code's format)
 export interface TextContentBlock {
   type: 'text';
   text: string;
@@ -374,11 +313,9 @@ export interface ToolCall {
 }
 
 export interface StreamChunk {
-  type: 'text' | 'thinking' | 'reasoning' | 'reasoning_summary' | 'tool_call' | 'tool_use' | 'code' | 'status' | 'error' | 'done';
+  type: 'text' | 'thinking' | 'reasoning' | 'tool_call' | 'done';
   content?: string;
   toolCall?: ToolCall;
-  toolName?: string;
-  toolInput?: any;
 }
 
 export interface ModelResponse {
@@ -403,17 +340,15 @@ export class UnifiedModelManager {
   private google?: GoogleGenerativeAI;
   private currentModel: string;
   private thinkingEnabled: boolean = true;
-  private interleavedThinkingEnabled: boolean = true; // Interleaved thinking
-  private computerUseEnabled: boolean = false; // Computer use capability
-  private promptCachingEnabled: boolean = true; //Prompt caching (enabled by default)
-  private skillsEnabled: boolean = true; // Agent Skills support
+  private interleavedThinkingEnabled: boolean = false; // NEW: Interleaved thinking
+  private computerUseEnabled: boolean = false; // NEW: Computer use capability
+  private promptCachingEnabled: boolean = true; // NEW: Prompt caching (enabled by default)
+  private skillsEnabled: boolean = false; // NEW: Agent Skills support
   private reasoningEffort: 'minimal' | 'low' | 'medium' | 'high' = 'high';
-  private verbosity: 'low' | 'high' = 'high'; // GPT-5 verbosity control (ONLY low/high per API docs)
+  private verbosity: 'low' | 'medium' | 'high' = 'high'; // GPT-5 verbosity control
   private lastResponseId?: string;
-  private conversationHistory: Message[] = []; //rolling context window management
-  private contextManager?: ContextWindowManager; //Context window manager
-  private isInToolUseLoop: boolean = false; // Track if we're in a tool use loop (prevent mid-turn thinking toggles)
-  private lastAssistantThinkingBlocks: any[] = []; // Preserve thinking blocks from last assistant message for tool use
+  private conversationHistory: Message[] = []; // NEW: For rolling context window management
+  private contextManager?: ContextWindowManager; // NEW: Context window manager
 
   constructor(
     anthropicKey?: string,
@@ -455,8 +390,8 @@ export class UnifiedModelManager {
     if (defaultModel && this.isModelAvailable(defaultModel)) {
       this.currentModel = defaultModel;
     } else {
-      // Auto-select first available model - DEFAULT TO HAIKU 4.5 (fast & cheap)
-      if (anthropicKey) this.currentModel = 'claude-haiku-4-5-20251001';
+      // Auto-select first available model
+      if (anthropicKey) this.currentModel = 'claude-sonnet-4-5-20250929';
       else if (openaiKey) this.currentModel = 'gpt-5';
       else if (googleKey) this.currentModel = 'gemini-2.0-flash-exp';
       else this.currentModel = ''; // No keys provided
@@ -516,21 +451,31 @@ export class UnifiedModelManager {
     if (oldConfig && newConfig) {
       // Disable thinking if new model doesn't support it
       if (!newConfig.supportsThinking && this.thinkingEnabled) {
+        console.log('⚠️  Auto-disabling thinking (not supported by new model)');
         this.thinkingEnabled = false;
       }
 
       // Disable interleaved thinking if new model doesn't support it
       if (!newConfig.supportsInterleavedThinking && this.interleavedThinkingEnabled) {
+        console.log('⚠️  Auto-disabling interleaved thinking (not supported by new model)');
         this.interleavedThinkingEnabled = false;
       }
 
-      // Disable reasoning if new model doesn't support it
-      if (!newConfig.supportsReasoning && oldConfig.supportsReasoning) {
-        // Don't reset reasoningEffort, just don't use it
+      // Auto-adjust reasoning effort based on new model's capabilities
+      if (newConfig.supportsReasoning) {
+        // If new model supports reasoning, use its default reasoning effort
+        if (newConfig.reasoningEffort) {
+          this.reasoningEffort = newConfig.reasoningEffort;
+        }
+      } else if (oldConfig.supportsReasoning) {
+        // If switching from reasoning model to non-reasoning model, reset to default
+        console.log('⚠️  Auto-disabling reasoning (not supported by new model)');
+        this.reasoningEffort = 'medium'; // Reset to safe default
       }
 
       // Disable computer use if new model doesn't support it
       if (!newConfig.supportsComputerUse && this.computerUseEnabled) {
+        console.log('⚠️  Auto-disabling computer use (not supported by new model)');
         this.computerUseEnabled = false;
       }
 
@@ -538,24 +483,18 @@ export class UnifiedModelManager {
       if (newConfig.supportsThinking && !this.thinkingEnabled && oldConfig.supportsThinking) {
         this.thinkingEnabled = true;
       }
+    } else if (newConfig && !oldConfig) {
+      // First time setting a model - use model's default reasoning effort if available
+      if (newConfig.supportsReasoning && newConfig.reasoningEffort) {
+        this.reasoningEffort = newConfig.reasoningEffort;
+      }
     }
   }
 
   /**
    * Toggle thinking mode
-   * CRITICAL: Cannot toggle thinking in the middle of an assistant turn (including tool use loops)
    */
   toggleThinking(): boolean {
-    if (this.isInToolUseLoop) {
-      console.warn('⚠️ Cannot toggle thinking during a tool use loop. Complete the assistant turn first.');
-      return this.thinkingEnabled;
-    }
-
-    // Invalidate prompt cache when thinking parameters change
-    if (this.promptCachingEnabled) {
-      console.log('🔄 Thinking parameter changed - prompt cache will be invalidated');
-    }
-
     this.thinkingEnabled = !this.thinkingEnabled;
     return this.thinkingEnabled;
   }
@@ -569,19 +508,8 @@ export class UnifiedModelManager {
 
   /**
    * Toggle interleaved thinking mode
-   * CRITICAL: Cannot toggle thinking in the middle of an assistant turn (including tool use loops)
    */
   toggleInterleavedThinking(): boolean {
-    if (this.isInToolUseLoop) {
-      console.warn('⚠️ Cannot toggle interleaved thinking during a tool use loop. Complete the assistant turn first.');
-      return this.interleavedThinkingEnabled;
-    }
-
-    // Invalidate prompt cache when thinking parameters change
-    if (this.promptCachingEnabled) {
-      console.log('🔄 Thinking parameter changed - prompt cache will be invalidated');
-    }
-
     this.interleavedThinkingEnabled = !this.interleavedThinkingEnabled;
     return this.interleavedThinkingEnabled;
   }
@@ -701,14 +629,14 @@ export class UnifiedModelManager {
   /**
    * Get verbosity level (GPT-5 specific)
    */
-  getVerbosity(): 'low' | 'high' {
+  getVerbosity(): 'low' | 'medium' | 'high' {
     return this.verbosity;
   }
 
   /**
    * Set verbosity level (GPT-5 specific)
    */
-  setVerbosity(level: 'low' | 'high'): void {
+  setVerbosity(level: 'low' | 'medium' | 'high'): void {
     this.verbosity = level;
   }
 
@@ -762,30 +690,14 @@ export class UnifiedModelManager {
       temperature?: number;
       maxTokens?: number;
       systemPrompt?: string;
-      tools?: any[];
-      tool_choice?: any;
     }
   ): Promise<ModelResponse> {
-    // Format messages and PRESERVE thinking blocks from previous assistant messages
     const formattedMessages = messages
       .filter(m => m.role !== 'system')
-      .map(m => {
-        const baseMessage: any = {
-          role: m.role as 'user' | 'assistant',
-          content: toAnthropicContent(m.content),
-        };
-
-        // CRITICAL: Preserve thinking blocks during tool use loops
-        // When passing tool results back, we must include the complete unmodified thinking blocks
-        if (m.role === 'assistant' && m.thinking) {
-          baseMessage.content = [
-            { type: 'thinking', thinking: m.thinking },
-            ...Array.isArray(baseMessage.content) ? baseMessage.content : [{ type: 'text', text: baseMessage.content }]
-          ];
-        }
-
-        return baseMessage;
-      });
+      .map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: toAnthropicContent(m.content),
+      }));
 
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
     const systemPromptText = typeof systemPrompt === 'string' ? systemPrompt : contentToText(systemPrompt || '');
@@ -793,18 +705,6 @@ export class UnifiedModelManager {
     // MAXIMUM CREATIVITY! All models use temperature 1.0 🔥
     const useThinking = this.getModelConfig().supportsThinking && this.thinkingEnabled;
     const useInterleavedThinking = this.getModelConfig().supportsThinking && this.interleavedThinkingEnabled;
-
-    // CRITICAL: Validate tool_choice when thinking is enabled
-    // Thinking + tool use only supports tool_choice: {type: "auto"} or {type: "none"}
-    if (useThinking && options.tool_choice) {
-      const toolChoiceType = typeof options.tool_choice === 'string' ? options.tool_choice : options.tool_choice.type;
-      if (toolChoiceType === 'any' || toolChoiceType === 'tool') {
-        throw new Error(
-          'Tool use with thinking only supports tool_choice: {type: "auto"} (default) or {type: "none"}. ' +
-          'Using tool_choice: {type: "any"} or {type: "tool", name: "..."} will result in an error.'
-        );
-      }
-    }
 
     // Build extra headers for beta features
     const betaFeatures: string[] = [];
@@ -818,16 +718,12 @@ export class UnifiedModelManager {
     if (this.promptCachingEnabled) {
       betaFeatures.push('prompt-caching-2024-07-31');
     }
-    // Add 1M context beta header for Sonnet 4 and 4.5
-    if (this.currentModel === 'claude-sonnet-4-20250514' || this.currentModel === 'claude-sonnet-4-5-20250929') {
-      betaFeatures.push('context-1m-2025-08-07');
+    if (this.skillsEnabled) {
+      // Agent Skills requires 3 beta headers
+      betaFeatures.push('code-execution-2025-08-25');
+      betaFeatures.push('skills-2025-10-02');
+      betaFeatures.push('files-api-2025-04-14');
     }
-    // Skills disabled - requires docker container via code-execution beta
-    // if (this.skillsEnabled) {
-    //   betaFeatures.push('code-execution-2025-08-25');
-    //   betaFeatures.push('skills-2025-10-02');
-    //   betaFeatures.push('files-api-2025-04-14');
-    // }
 
     // Enable prompt caching if enabled
     let finalSystem: any = systemPromptText;
@@ -847,17 +743,6 @@ export class UnifiedModelManager {
     // Use appropriate client based on operation type
     const client = this.getAnthropicClient();
 
-    // Prepare tools array - include code_execution if skills are enabled
-    let anthropicTools: any[] = options.tools && options.tools.length > 0 ? mcpToAnthropicTools(options.tools) as any : [];
-
-    // Skills disabled - requires docker container
-    // if (this.skillsEnabled) {
-    //   anthropicTools.push({
-    //     type: 'code_execution_20250825',
-    //     name: 'code_execution',
-    //   });
-    // }
-
     // Build request options (first parameter)
     const requestOptions: any = {
       model: this.currentModel,
@@ -865,12 +750,7 @@ export class UnifiedModelManager {
       temperature: 1.0,
       system: finalSystem,
       messages: finalMessages as any,
-      // Add tools if provided
-      ...(anthropicTools.length > 0 && { tools: anthropicTools }),
-      // Add tool_choice if provided and validated
-      ...(options.tool_choice && { tool_choice: options.tool_choice }),
-      // Enable thinking: use extended thinking if not using interleaved (beta header handles interleaved)
-      ...(useThinking && {
+      ...(useThinking && !useInterleavedThinking && {
         thinking: {
           type: 'enabled',
           budget_tokens: 200000,
@@ -891,14 +771,10 @@ export class UnifiedModelManager {
     const thinkingContent = response.content.find((c: any) => c.type === 'thinking');
 
     const toolCalls: ToolCall[] = [];
-    const thinkingBlocks: any[] = [];
 
-    // Extract all tool_use blocks and thinking blocks
+    // Extract all tool_use blocks
     for (const contentBlock of response.content) {
       if (contentBlock.type === 'tool_use') {
-        // We're entering a tool use loop - set flag to prevent mid-turn thinking toggles
-        this.isInToolUseLoop = true;
-
         // Extract input parameters from tool call
         const input = (contentBlock as any).input as Record<string, any>;
         toolCalls.push({
@@ -909,20 +785,7 @@ export class UnifiedModelManager {
             arguments: JSON.stringify(input), // Convert to JSON string for consistency
           },
         });
-      } else if ((contentBlock as any).type === 'thinking') {
-        // Preserve thinking blocks for future tool use loops
-        thinkingBlocks.push({ type: 'thinking', thinking: (contentBlock as any).thinking });
       }
-    }
-
-    // Save thinking blocks for future tool use loops
-    if (thinkingBlocks.length > 0) {
-      this.lastAssistantThinkingBlocks = thinkingBlocks;
-    }
-
-    // If no tool calls, we're done with this turn - reset flag
-    if (toolCalls.length === 0) {
-      this.isInToolUseLoop = false;
     }
 
     return {
@@ -988,22 +851,16 @@ export class UnifiedModelManager {
       temperature: 1.0,
       // Use previous_response_id for context chaining
       ...(this.lastResponseId && { previous_response_id: this.lastResponseId }),
-      // CRITICAL: Computer use requires truncation: 'auto'
-      ...(this.currentModel === 'computer-use-preview' && {
-        truncation: 'auto'
-      }),
       // Add tool support - convert MCP format to OpenAI Responses API format
-      // NOTE: Responses API supports parallel tool calls
+      // NOTE: Responses API is agentic by default, no parallel_tool_calls param needed
       ...(options.tools && options.tools.length > 0 && {
         tools: mcpToOpenAITools(options.tools),
-        parallel_tool_calls: true, // Enable parallel tool execution
       }),
       // GPT-5 verbosity control
       text: {
         verbosity: this.verbosity,
       },
-      // Enable reasoning for supported models
-      // CRITICAL: Use model-specific reasoningEffort, not global setting!
+      // Only add reasoning if model supports it
       ...(this.getModelConfig().supportsReasoning && {
         reasoning: {
           effort: this.getModelConfig().reasoningEffort || this.reasoningEffort,
@@ -1014,10 +871,9 @@ export class UnifiedModelManager {
 
     this.lastResponseId = response.id;
 
-    // Parse output - handle ALL output types
+    // Parse output
     let content = '';
     let reasoning = '';
-    const toolCalls: ToolCall[] = [];
 
     for (const item of response.output) {
       if (item.type === 'message') {
@@ -1032,44 +888,12 @@ export class UnifiedModelManager {
             reasoning += summary.text + ' ';
           }
         }
-      } else if (item.type === 'function_call') {
-        // Handle function calls
-        toolCalls.push({
-          id: (item as any).call_id || (item as any).id,
-          type: 'function',
-          function: {
-            name: (item as any).name,
-            arguments: (item as any).arguments || '{}',
-          },
-        });
-      } else if (item.type === 'web_search_call') {
-        // Log web search (not a tool call we need to handle)
-        console.log('Web search performed:', (item as any).id);
-      } else if (item.type === 'file_search_call') {
-        // Log file search (not a tool call we need to handle)
-        console.log('File search performed:', (item as any).id);
-      } else if (item.type === 'mcp_call') {
-        // Handle MCP tool call
-        console.log('MCP call:', (item as any).name, (item as any).output);
-      } else if (item.type === 'mcp_approval_request') {
-        // Handle MCP approval request (would need user interaction)
-        console.log('MCP approval needed:', (item as any).name);
-      } else if (item.type === 'code_interpreter_call') {
-        // Log code execution
-        console.log('Code executed:', (item as any).id);
-      } else if (item.type === 'image_generation_call') {
-        // Log image generation
-        console.log('Image generated:', (item as any).id);
-      } else if (item.type === 'computer_call') {
-        // Log computer use action
-        console.log('Computer action:', (item as any).action);
       }
     }
 
     return {
       content: content.trim(),
       reasoning: reasoning.trim() || undefined,
-      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       usage: {
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens,
@@ -1114,29 +938,14 @@ export class UnifiedModelManager {
       maxTokens?: number;
       systemPrompt?: string;
       tools?: any[];
-      tool_choice?: any;
     }
   ): AsyncGenerator<StreamChunk> {
-    // Format messages and PRESERVE thinking blocks from previous assistant messages
     const formattedMessages = messages
       .filter(m => m.role !== 'system')
-      .map(m => {
-        const baseMessage: any = {
-          role: m.role as 'user' | 'assistant',
-          content: toAnthropicContent(m.content),
-        };
-
-        // CRITICAL: Preserve thinking blocks during tool use loops
-        // When passing tool results back, we must include the complete unmodified thinking blocks
-        if (m.role === 'assistant' && m.thinking) {
-          baseMessage.content = [
-            { type: 'thinking', thinking: m.thinking },
-            ...Array.isArray(baseMessage.content) ? baseMessage.content : [{ type: 'text', text: baseMessage.content }]
-          ];
-        }
-
-        return baseMessage;
-      });
+      .map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: toAnthropicContent(m.content),
+      }));
 
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
     const systemPromptText = typeof systemPrompt === 'string' ? systemPrompt : contentToText(systemPrompt || '');
@@ -1145,19 +954,7 @@ export class UnifiedModelManager {
     const useThinking = this.getModelConfig().supportsThinking && this.thinkingEnabled;
     const useInterleavedThinking = this.getModelConfig().supportsThinking && this.interleavedThinkingEnabled;
 
-    // CRITICAL: Validate tool_choice when thinking is enabled
-    // Thinking + tool use only supports tool_choice: {type: "auto"} or {type: "none"}
-    if (useThinking && options.tool_choice) {
-      const toolChoiceType = typeof options.tool_choice === 'string' ? options.tool_choice : options.tool_choice.type;
-      if (toolChoiceType === 'any' || toolChoiceType === 'tool') {
-        throw new Error(
-          'Tool use with thinking only supports tool_choice: {type: "auto"} (default) or {type: "none"}. ' +
-          'Using tool_choice: {type: "any"} or {type: "tool", name: "..."} will result in an error.'
-        );
-      }
-    }
-
-    // Build headers for beta features
+    // Build extra headers for beta features
     const betaFeatures: string[] = [];
 
     if (useInterleavedThinking) {
@@ -1169,30 +966,15 @@ export class UnifiedModelManager {
     if (this.promptCachingEnabled) {
       betaFeatures.push('prompt-caching-2024-07-31');
     }
-    // Add 1M context beta header for Sonnet 4 and 4.5
-    if (this.currentModel === 'claude-sonnet-4-20250514' || this.currentModel === 'claude-sonnet-4-5-20250929') {
-      betaFeatures.push('context-1m-2025-08-07');
+    if (this.skillsEnabled) {
+      // Agent Skills requires 3 beta headers
+      betaFeatures.push('code-execution-2025-08-25');
+      betaFeatures.push('skills-2025-10-02');
+      betaFeatures.push('files-api-2025-04-14');
     }
-    // Skills disabled - requires docker container via code-execution beta
-    // if (this.skillsEnabled) {
-    //   betaFeatures.push('code-execution-2025-08-25');
-    //   betaFeatures.push('skills-2025-10-02');
-    //   betaFeatures.push('files-api-2025-04-14');
-    // }
 
     // Use streaming client (10 min timeout)
     const client = this.getAnthropicStreamingClient();
-
-    // Prepare tools array - include code_execution if skills are enabled
-    let anthropicTools: any[] = options.tools && options.tools.length > 0 ? mcpToAnthropicTools(options.tools) as any : [];
-
-    // Skills disabled - requires docker container
-    // if (this.skillsEnabled && !anthropicTools.find(t => t.name === 'code_execution')) {
-    //   anthropicTools.push({
-    //     type: 'code_execution_20250825',
-    //     name: 'code_execution',
-    //   });
-    // }
 
     // Build streaming request options (first parameter)
     const streamOptions: any = {
@@ -1201,12 +983,9 @@ export class UnifiedModelManager {
       temperature: 1.0,
       system: systemPromptText,
       messages: formattedMessages as any,
-      // Add tool support
-      ...(anthropicTools.length > 0 && { tools: anthropicTools }),
-      // Add tool_choice if provided and validated
-      ...(options.tool_choice && { tool_choice: options.tool_choice }),
-      // Enable thinking: use extended thinking if not using interleaved (beta header handles interleaved)
-      ...(useThinking && {
+      // Add tool support - convert MCP format to Anthropic format
+      ...(options.tools && options.tools.length > 0 && { tools: mcpToAnthropicTools(options.tools) as any }),
+      ...(useThinking && !useInterleavedThinking && {
         thinking: {
           type: 'enabled',
           budget_tokens: 200000,
@@ -1223,28 +1002,18 @@ export class UnifiedModelManager {
 
     const stream = await client.messages.stream(streamOptions, headersOptions);
 
-    // Track tool calls and thinking blocks being built up from deltas 🔥
+    // Track tool calls being built up from deltas 🔥
     let currentToolCall: { id: string; name: string; inputStr: string } | null = null;
-    let currentThinkingBlock: string = '';
-    const thinkingBlocks: any[] = [];
 
     for await (const chunk of stream) {
       if (chunk.type === 'content_block_start') {
         // Start tracking tool_use blocks
         if (chunk.content_block.type === 'tool_use') {
-          // We're entering a tool use loop - set flag to prevent mid-turn thinking toggles
-          this.isInToolUseLoop = true;
-
           currentToolCall = {
             id: chunk.content_block.id,
             name: chunk.content_block.name,
             inputStr: '', // Will accumulate from deltas - THIS IS THE FIX!
           };
-        }
-        // Handle thinking block start
-        else if ((chunk.content_block as any).type === 'thinking') {
-          // Thinking block started - deltas will follow
-          currentThinkingBlock = '';
         }
       } else if (chunk.type === 'content_block_delta') {
         if (chunk.delta.type === 'text_delta') {
@@ -1257,22 +1026,14 @@ export class UnifiedModelManager {
         else if (chunk.delta.type === 'input_json_delta' && currentToolCall) {
           currentToolCall.inputStr += chunk.delta.partial_json;
         }
-        // Thinking deltas - accumulate for preservation
+        // Thinking deltas
         else if ((chunk.delta as any).type === 'thinking_delta') {
-          const thinkingText = (chunk.delta as any).thinking || '';
-          currentThinkingBlock += thinkingText;
           yield {
             type: 'thinking',
-            content: thinkingText,
+            content: (chunk.delta as any).thinking,
           };
         }
       } else if (chunk.type === 'content_block_stop') {
-        // Save thinking block for later use during tool use loops
-        if (currentThinkingBlock) {
-          thinkingBlocks.push({ type: 'thinking', thinking: currentThinkingBlock });
-          currentThinkingBlock = '';
-        }
-
         // Finalize the tool call with accumulated parameters
         if (currentToolCall) {
           try {
@@ -1294,12 +1055,6 @@ export class UnifiedModelManager {
           currentToolCall = null;
         }
       } else if (chunk.type === 'message_stop') {
-        // Save thinking blocks for future tool use loops
-        if (thinkingBlocks.length > 0) {
-          this.lastAssistantThinkingBlocks = thinkingBlocks;
-        }
-        // Reset tool use loop flag when message is complete
-        this.isInToolUseLoop = false;
         yield { type: 'done' };
       }
     }
@@ -1317,192 +1072,99 @@ export class UnifiedModelManager {
       tools?: any[];
     }
   ): AsyncGenerator<StreamChunk> {
-    // SIMPLIFIED: Just like OpenAI's official example - use instructions instead of complex input handling
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
-    const instructions = typeof systemPrompt === 'string' ? systemPrompt : contentToText(systemPrompt || '');
+    const systemPromptText = typeof systemPrompt === 'string' ? systemPrompt : contentToText(systemPrompt || '');
+    const userMessages = messages.filter(m => m.role !== 'system');
 
-    // Convert messages to simple format
-    const input = messages
-      .filter(m => m.role !== 'system')
-      .map(m => ({
-        role: m.role,
-        content: typeof m.content === 'string' ? m.content : contentToText(m.content),
-      }));
+    const input: any[] = [];
+    if (systemPromptText) {
+      input.push({ role: 'developer', content: systemPromptText });
+    }
+
+    // CONVERT ContentBlock[] to string! 🔥
+    for (const msg of userMessages) {
+      if (msg.role === 'user') {
+        const textContent = typeof msg.content === 'string' ? msg.content : contentToText(msg.content);
+        input.push({
+          role: 'user',
+          content: [{ type: 'input_text', text: textContent }],
+        });
+      } else if (msg.role === 'assistant') {
+        const textContent = typeof msg.content === 'string' ? msg.content : contentToText(msg.content);
+        input.push({
+          role: 'assistant',
+          content: [{ type: 'output_text', text: textContent }],
+        });
+      }
+    }
 
     const stream = await this.openai.responses.create({
       model: this.currentModel,
-      input,
-      instructions,
+      input: input.length === 1 ? input[0].content[0].text : input,
       max_output_tokens: options.maxTokens || this.getModelConfig().maxTokens,
+      temperature: 1.0,
       stream: true,
       ...(this.lastResponseId && { previous_response_id: this.lastResponseId }),
-      // CRITICAL: Computer use requires truncation: 'auto'
-      ...(this.currentModel === 'computer-use-preview' && {
-        truncation: 'auto'
-      }),
       // Add tool support - convert MCP format to OpenAI Responses API format
+      // NOTE: Responses API is agentic by default, no parallel_tool_calls param needed
       ...(options.tools && options.tools.length > 0 && {
         tools: mcpToOpenAITools(options.tools),
-        parallel_tool_calls: true,
       }),
       // GPT-5 verbosity control
       text: {
         verbosity: this.verbosity,
       },
-      // CRITICAL: Use model-specific reasoningEffort, not global setting!
+      // Only add reasoning if model supports it
       ...(this.getModelConfig().supportsReasoning && {
         reasoning: {
           effort: this.getModelConfig().reasoningEffort || this.reasoningEffort,
-          summary: 'detailed',
+          summary: 'detailed', // Reasoning models only support 'detailed', not 'concise'
         },
       }),
     } as any);
 
-    // Handle OpenAI Responses API streaming events
-    let currentToolCall: { name: string; arguments: string } | null = null;
+    for await (const chunk of (stream as any)) {
+      // Log ALL events to debug stream issues
+      console.log('📨 OpenAI Event:', chunk.type);
 
-    for await (const event of (stream as any)) {
-      const eventType = (event as any).type;
-
-      // Text deltas (assistant output)
-      if (eventType === 'response.output_text.delta') {
+      if (chunk.type === 'response.output_text.delta') {
         yield {
           type: 'text',
-          content: (event as any).delta || ''
+          content: (chunk as any).delta,
         };
-      }
-      // Text done
-      else if (eventType === 'response.output_text.done') {
-        // Could emit a marker here if needed
-        continue;
-      }
-      // Reasoning content (for o1/o3 models)
-      else if (eventType === 'response.reasoning_text.delta') {
+      } else if (chunk.type === 'response.reasoning_summary_text.delta') {
+        // Reasoning summary chunks
         yield {
           type: 'reasoning',
-          content: (event as any).delta || ''
+          content: (chunk as any).delta,
         };
-      }
-      // Reasoning summary (condensed reasoning)
-      else if (eventType === 'response.reasoning_summary_text.delta') {
+      } else if (chunk.type === 'response.reasoning.delta') {
+        // Full reasoning chunks (not just summary)
         yield {
-          type: 'reasoning_summary',
-          content: (event as any).delta || ''
+          type: 'reasoning',
+          content: (chunk as any).delta || (chunk as any).content || '',
         };
-      }
-      // Function/tool call arguments streaming
-      else if (eventType === 'response.function_call_arguments.delta') {
-        if (!currentToolCall) {
-          currentToolCall = { name: (event as any).name || '', arguments: '' };
-        }
-        currentToolCall.arguments += (event as any).delta || '';
-      }
-      else if (eventType === 'response.function_call_arguments.done') {
-        if (currentToolCall || (event as any).name) {
-          yield {
-            type: 'tool_use',
-            toolName: (event as any).name || currentToolCall?.name || '',
-            toolInput: JSON.parse((event as any).arguments || currentToolCall?.arguments || '{}')
-          };
-          currentToolCall = null;
-        }
-      }
-      // MCP tool calls
-      else if (eventType === 'response.mcp_call_arguments.delta') {
-        if (!currentToolCall) {
-          currentToolCall = { name: '', arguments: '' };
-        }
-        currentToolCall.arguments += (event as any).delta || '';
-      }
-      else if (eventType === 'response.mcp_call_arguments.done') {
-        if (currentToolCall || (event as any).arguments) {
-          yield {
-            type: 'tool_use',
-            toolName: 'mcp_call',
-            toolInput: JSON.parse((event as any).arguments || currentToolCall?.arguments || '{}')
-          };
-          currentToolCall = null;
-        }
-      }
-      // Web search events
-      else if (eventType === 'response.web_search_call.in_progress') {
-        yield {
-          type: 'status',
-          content: '🔍 Searching the web...'
-        };
-      }
-      else if (eventType === 'response.web_search_call.completed') {
-        yield {
-          type: 'status',
-          content: '✅ Web search completed'
-        };
-      }
-      // File search events
-      else if (eventType === 'response.file_search_call.searching') {
-        yield {
-          type: 'status',
-          content: '📁 Searching files...'
-        };
-      }
-      else if (eventType === 'response.file_search_call.completed') {
-        yield {
-          type: 'status',
-          content: '✅ File search completed'
-        };
-      }
-      // Image generation events
-      else if (eventType === 'response.image_generation_call.generating') {
-        yield {
-          type: 'status',
-          content: '🎨 Generating image...'
-        };
-      }
-      else if (eventType === 'response.image_generation_call.completed') {
-        yield {
-          type: 'status',
-          content: '✅ Image generated'
-        };
-      }
-      // Code interpreter events
-      else if (eventType === 'response.code_interpreter_call.interpreting') {
-        yield {
-          type: 'status',
-          content: '⚙️ Running code...'
-        };
-      }
-      else if (eventType === 'response.code_interpreter_call_code.delta') {
-        yield {
-          type: 'code',
-          content: (event as any).delta || ''
-        };
-      }
-      // Response lifecycle events
-      else if (eventType === 'response.failed') {
-        yield {
-          type: 'error',
-          content: `Error: ${(event as any).response?.error?.message || 'Unknown error'}`
-        };
-      }
-      else if (eventType === 'response.incomplete') {
-        const reason = (event as any).response?.incomplete_details?.reason || 'unknown';
-        yield {
-          type: 'status',
-          content: `⚠️ Response incomplete: ${reason}`
-        };
-      }
-      else if (eventType === 'response.completed') {
-        // Save response ID for continuation
-        if ((event as any).response?.id) {
-          this.lastResponseId = (event as any).response.id;
-        }
+      } else if (chunk.type === 'response.reasoning.done') {
+        // Reasoning finished - DON'T stop stream, just log
+        console.log('✅ Reasoning complete, continuing stream...');
+        // Don't yield anything, keep streaming
+      } else if (chunk.type === 'response.created') {
+        this.lastResponseId = (chunk as any).response.id;
+      } else if (chunk.type === 'response.completed') {
+        console.log('✅ Response complete');
         yield { type: 'done' };
-      }
-      // Error event
-      else if (eventType === 'error') {
-        yield {
-          type: 'error',
-          content: `Error: ${(event as any).message || 'Unknown error'}`
-        };
+      } else if (chunk.type && chunk.type.includes('reasoning')) {
+        // Catch any other reasoning-related events we might have missed
+        console.log('🔍 Unknown reasoning event type:', chunk.type, JSON.stringify(chunk));
+        if (chunk.delta || chunk.content) {
+          yield {
+            type: 'reasoning',
+            content: (chunk as any).delta || (chunk as any).content || '',
+          };
+        }
+      } else {
+        // Log unhandled events
+        console.log('⚠️ Unhandled event type:', chunk.type);
       }
     }
   }
