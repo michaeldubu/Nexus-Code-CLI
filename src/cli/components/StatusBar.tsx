@@ -86,7 +86,7 @@ export const StatusBar: React.FC<Props> = ({
         </>
       )}
 
-      <Text color="gray" dimColor> │ Tab=toggle | Shift+Tab=mode</Text>
+      <Text color="gray" dimColor> │ Tab=thinking | Ctrl+R=reasoning | Shift+Tab=mode</Text>
     </Box>
   );
 };

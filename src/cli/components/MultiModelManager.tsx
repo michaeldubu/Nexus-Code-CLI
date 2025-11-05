@@ -105,7 +105,7 @@ export async function* streamMultiModelMessage(
   activeAgents: string[],
   tools?: any[]
 ): AsyncGenerator<{
-  type: 'start' | 'chunk' | 'complete' | 'tool_call';
+  type: 'start' | 'chunk' | 'complete' | 'tool_call' | 'error';
   modelId: string;
   modelName: string;
   content?: string;
@@ -113,6 +113,7 @@ export async function* streamMultiModelMessage(
   isThinking?: boolean;
   toolCall?: any;
   message?: Message & { model: string; agent?: string; timestamp: string };
+  error?: string;
 }> {
   const enhancedPrompt = buildEnhancedSystemPrompt(systemPrompt, activeAgents);
   const agentEmojis = activeAgents.map(id => AGENT_ROLES[id]?.emoji).filter(Boolean).join('');
@@ -123,58 +124,68 @@ export async function* streamMultiModelMessage(
       if (activeModels.length > 0) {
         const modelId = activeModels[0];
         const modelName = AVAILABLE_MODELS[modelId]?.name || modelId;
-        // Only switch if different model - prevents resetting thinking state
-        if (modelManager.getCurrentModel() !== modelId) {
-          modelManager.setModel(modelId);
-        }
 
-        yield { type: 'start', modelId, modelName };
-
-        let fullContent = '';
-        let fullThinking = '';
-
-        for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt, tools })) {
-          if (chunk.type === 'text') {
-            fullContent += chunk.content;
-            yield {
-              type: 'chunk',
-              modelId,
-              modelName,
-              content: chunk.content,
-              isThinking: false,
-            };
-          } else if (chunk.type === 'thinking' || chunk.type === 'reasoning') {
-            fullThinking += chunk.content;
-            yield {
-              type: 'chunk',
-              modelId,
-              modelName,
-              thinking: chunk.content,
-              isThinking: true,
-            };
-          } else if (chunk.type === 'tool_call' && chunk.toolCall) {
-            yield {
-              type: 'tool_call',
-              modelId,
-              modelName,
-              toolCall: chunk.toolCall,
-            };
+        try {
+          // Only switch if different model - prevents resetting thinking state
+          if (modelManager.getCurrentModel() !== modelId) {
+            modelManager.setModel(modelId);
           }
-        }
 
-        yield {
-          type: 'complete',
-          modelId,
-          modelName,
-          message: {
-            role: 'assistant',
-            content: fullContent,
-            thinking: fullThinking || undefined,
-            model: modelName,
-            agent: agentEmojis || undefined,
-            timestamp: new Date().toISOString(),
-          },
-        };
+          yield { type: 'start', modelId, modelName };
+
+          let fullContent = '';
+          let fullThinking = '';
+
+          for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt, tools })) {
+            if (chunk.type === 'text') {
+              fullContent += chunk.content;
+              yield {
+                type: 'chunk',
+                modelId,
+                modelName,
+                content: chunk.content,
+                isThinking: false,
+              };
+            } else if (chunk.type === 'thinking' || chunk.type === 'reasoning') {
+              fullThinking += chunk.content;
+              yield {
+                type: 'chunk',
+                modelId,
+                modelName,
+                thinking: chunk.content,
+                isThinking: true,
+              };
+            } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+              yield {
+                type: 'tool_call',
+                modelId,
+                modelName,
+                toolCall: chunk.toolCall,
+              };
+            }
+          }
+
+          yield {
+            type: 'complete',
+            modelId,
+            modelName,
+            message: {
+              role: 'assistant',
+              content: fullContent,
+              thinking: fullThinking || undefined,
+              model: modelName,
+              agent: agentEmojis || undefined,
+              timestamp: new Date().toISOString(),
+            },
+          };
+        } catch (error: any) {
+          yield {
+            type: 'error',
+            modelId,
+            modelName,
+            error: error?.message || String(error),
+          };
+        }
       }
       break;
 
@@ -183,63 +194,74 @@ export async function* streamMultiModelMessage(
       let workingHistory = [...conversationHistory];
       for (const modelId of activeModels) {
         const modelName = AVAILABLE_MODELS[modelId]?.name || modelId;
-        // Only switch if different model - prevents resetting thinking state
-        if (modelManager.getCurrentModel() !== modelId) {
-          modelManager.setModel(modelId);
-        }
 
-        yield { type: 'start', modelId, modelName };
-
-        let fullContent = '';
-        let fullThinking = '';
-
-        for await (const chunk of modelManager.streamMessage(workingHistory, { systemPrompt: enhancedPrompt, tools })) {
-          if (chunk.type === 'text') {
-            fullContent += chunk.content;
-            yield {
-              type: 'chunk',
-              modelId,
-              modelName,
-              content: chunk.content,
-              isThinking: false,
-            };
-          } else if (chunk.type === 'thinking' || chunk.type === 'reasoning') {
-            fullThinking += chunk.content;
-            yield {
-              type: 'chunk',
-              modelId,
-              modelName,
-              thinking: chunk.content,
-              isThinking: true,
-            };
-          } else if (chunk.type === 'tool_call' && chunk.toolCall) {
-            yield {
-              type: 'tool_call',
-              modelId,
-              modelName,
-              toolCall: chunk.toolCall,
-            };
+        try {
+          // Only switch if different model - prevents resetting thinking state
+          if (modelManager.getCurrentModel() !== modelId) {
+            modelManager.setModel(modelId);
           }
+
+          yield { type: 'start', modelId, modelName };
+
+          let fullContent = '';
+          let fullThinking = '';
+
+          for await (const chunk of modelManager.streamMessage(workingHistory, { systemPrompt: enhancedPrompt, tools })) {
+            if (chunk.type === 'text') {
+              fullContent += chunk.content;
+              yield {
+                type: 'chunk',
+                modelId,
+                modelName,
+                content: chunk.content,
+                isThinking: false,
+              };
+            } else if (chunk.type === 'thinking' || chunk.type === 'reasoning') {
+              fullThinking += chunk.content;
+              yield {
+                type: 'chunk',
+                modelId,
+                modelName,
+                thinking: chunk.content,
+                isThinking: true,
+              };
+            } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+              yield {
+                type: 'tool_call',
+                modelId,
+                modelName,
+                toolCall: chunk.toolCall,
+              };
+            }
+          }
+
+          const assistantMsg = {
+            role: 'assistant' as const,
+            content: fullContent,
+            thinking: fullThinking || undefined,
+            model: modelName,
+            agent: agentEmojis || undefined,
+            timestamp: new Date().toISOString(),
+          };
+
+          yield {
+            type: 'complete',
+            modelId,
+            modelName,
+            message: assistantMsg,
+          };
+
+          // Add to history for next model
+          workingHistory = [...workingHistory, assistantMsg];
+        } catch (error: any) {
+          yield {
+            type: 'error',
+            modelId,
+            modelName,
+            error: error?.message || String(error),
+          };
+          // Continue to next model even if this one failed
         }
-
-        const assistantMsg = {
-          role: 'assistant' as const,
-          content: fullContent,
-          thinking: fullThinking || undefined,
-          model: modelName,
-          agent: agentEmojis || undefined,
-          timestamp: new Date().toISOString(),
-        };
-
-        yield {
-          type: 'complete',
-          modelId,
-          modelName,
-          message: assistantMsg,
-        };
-
-        // Add to history for next model
-        workingHistory = [...workingHistory, assistantMsg];
       }
       break;
 
@@ -248,58 +270,69 @@ export async function* streamMultiModelMessage(
       // Stream from all models (sequential processes one at a time, parallel would be more complex)
       for (const modelId of activeModels) {
         const modelName = AVAILABLE_MODELS[modelId]?.name || modelId;
-        // Only switch if different model - prevents resetting thinking state
-        if (modelManager.getCurrentModel() !== modelId) {
-          modelManager.setModel(modelId);
-        }
 
-        yield { type: 'start', modelId, modelName };
-
-        let fullContent = '';
-        let fullThinking = '';
-
-        for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt, tools })) {
-          if (chunk.type === 'text') {
-            fullContent += chunk.content;
-            yield {
-              type: 'chunk',
-              modelId,
-              modelName,
-              content: chunk.content,
-              isThinking: false,
-            };
-          } else if (chunk.type === 'thinking' || chunk.type === 'reasoning') {
-            fullThinking += chunk.content;
-            yield {
-              type: 'chunk',
-              modelId,
-              modelName,
-              thinking: chunk.content,
-              isThinking: true,
-            };
-          } else if (chunk.type === 'tool_call' && chunk.toolCall) {
-            yield {
-              type: 'tool_call',
-              modelId,
-              modelName,
-              toolCall: chunk.toolCall,
-            };
+        try {
+          // Only switch if different model - prevents resetting thinking state
+          if (modelManager.getCurrentModel() !== modelId) {
+            modelManager.setModel(modelId);
           }
-        }
 
-        yield {
-          type: 'complete',
-          modelId,
-          modelName,
-          message: {
-            role: 'assistant',
-            content: fullContent,
-            thinking: fullThinking || undefined,
-            model: modelName,
-            agent: agentEmojis || undefined,
-            timestamp: new Date().toISOString(),
-          },
-        };
+          yield { type: 'start', modelId, modelName };
+
+          let fullContent = '';
+          let fullThinking = '';
+
+          for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt, tools })) {
+            if (chunk.type === 'text') {
+              fullContent += chunk.content;
+              yield {
+                type: 'chunk',
+                modelId,
+                modelName,
+                content: chunk.content,
+                isThinking: false,
+              };
+            } else if (chunk.type === 'thinking' || chunk.type === 'reasoning') {
+              fullThinking += chunk.content;
+              yield {
+                type: 'chunk',
+                modelId,
+                modelName,
+                thinking: chunk.content,
+                isThinking: true,
+              };
+            } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+              yield {
+                type: 'tool_call',
+                modelId,
+                modelName,
+                toolCall: chunk.toolCall,
+              };
+            }
+          }
+
+          yield {
+            type: 'complete',
+            modelId,
+            modelName,
+            message: {
+              role: 'assistant',
+              content: fullContent,
+              thinking: fullThinking || undefined,
+              model: modelName,
+              agent: agentEmojis || undefined,
+              timestamp: new Date().toISOString(),
+            },
+          };
+        } catch (error: any) {
+          yield {
+            type: 'error',
+            modelId,
+            modelName,
+            error: error?.message || String(error),
+          };
+          // Continue to next model even if this one failed
+        }
       }
       break;
   }
