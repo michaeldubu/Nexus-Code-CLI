@@ -47,19 +47,19 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
     (input, key) => {
       if (disabled) return;
 
-      // Shift+Enter = Submit (send the message)
+      // Shift+Enter = New line (for multiline input)
       if (key.return && key.shift) {
-        handleSubmit();
-        return;
-      }
-
-      // Regular Enter = New line (normal multiline behavior)
-      if (key.return) {
         const newValue =
           value.slice(0, cursorOffset) + '\n' + value.slice(cursorOffset);
         onChange(newValue);
         setCursorOffset(cursorOffset + 1);
         setShowFullContent(true);
+        return;
+      }
+
+      // Regular Enter = SEND (submit the message) - like chat apps!
+      if (key.return) {
+        handleSubmit();
         return;
       }
 
@@ -379,7 +379,7 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
       {/* Help text */}
       <Box marginTop={1}>
         <Text color="gray" dimColor>
-          Enter = new line | Shift+Enter = send | ↑↓←→ = navigate | Home/End = line start/end
+          Enter = send | Shift+Enter = new line | ↑↓←→ = navigate | Home/End = line start/end
         </Text>
       </Box>
 
