@@ -404,7 +404,7 @@ export class UnifiedModelManager {
   private promptCachingEnabled: boolean = true; //Prompt caching (enabled by default)
   private skillsEnabled: boolean = true; // Agent Skills support
   private reasoningEffort: 'off' | 'minimal' | 'low' | 'medium' | 'high' = 'high';
-  private verbosity: 'low' | 'high' = 'high'; // GPT-5 verbosity control (ONLY low/high per API docs)
+  private verbosity: 'low' | 'medium' | 'high' = 'medium'; // Verbosity control (low/medium/high per Responses API)
   private lastResponseId?: string;
   private conversationHistory: Message[] = []; //rolling context window management
   private contextManager?: ContextWindowManager; //Context window manager
@@ -539,6 +539,14 @@ export class UnifiedModelManager {
       // Auto-enable thinking for new Claude models if it was on for old model
       if (newConfig.supportsThinking && !this.thinkingEnabled && oldConfig.supportsThinking) {
         this.thinkingEnabled = true;
+      }
+
+      // Auto-adjust verbosity for GPT-5 variants (high for better full code)
+      if (newConfig.provider === 'openai' && modelId.startsWith('gpt-5')) {
+        this.verbosity = 'high';
+      } else if (oldConfig.provider === 'openai' && this.currentModel.startsWith('gpt-5')) {
+        // Switching away from GPT-5, reset to medium
+        this.verbosity = 'medium';
       }
     }
   }
@@ -701,16 +709,16 @@ export class UnifiedModelManager {
   }
 
   /**
-   * Get verbosity level (GPT-5 specific)
+   * Get verbosity level
    */
-  getVerbosity(): 'low' | 'high' {
+  getVerbosity(): 'low' | 'medium' | 'high' {
     return this.verbosity;
   }
 
   /**
-   * Set verbosity level (GPT-5 specific)
+   * Set verbosity level
    */
-  setVerbosity(level: 'low' | 'high'): void {
+  setVerbosity(level: 'low' | 'medium' | 'high'): void {
     this.verbosity = level;
   }
 
