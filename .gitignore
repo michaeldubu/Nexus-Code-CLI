@@ -53,6 +53,7 @@ temp/
 
 # TypeScript cache
 *.tsbuildinfo
+<<<<<<< Updated upstream
 src/bulkreplace.py
 /.gitignoredir
 /.claude
@@ -66,3 +67,6 @@ replace.py
 nexus-nextjs.zip
 claude-api-docs-uptodate.md
 /nexus-nextjs
+=======
+/.claude
+>>>>>>> Stashed changes
