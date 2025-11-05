@@ -461,10 +461,16 @@ export class UnifiedModelManager {
         this.interleavedThinkingEnabled = false;
       }
 
-      // Disable reasoning if new model doesn't support it
-      if (!newConfig.supportsReasoning && oldConfig.supportsReasoning) {
+      // Auto-adjust reasoning effort based on new model's capabilities
+      if (newConfig.supportsReasoning) {
+        // If new model supports reasoning, use its default reasoning effort
+        if (newConfig.reasoningEffort) {
+          this.reasoningEffort = newConfig.reasoningEffort;
+        }
+      } else if (oldConfig.supportsReasoning) {
+        // If switching from reasoning model to non-reasoning model, reset to default
         console.log('⚠️  Auto-disabling reasoning (not supported by new model)');
-        // Don't reset reasoningEffort, just don't use it
+        this.reasoningEffort = 'medium'; // Reset to safe default
       }
 
       // Disable computer use if new model doesn't support it
@@ -476,6 +482,11 @@ export class UnifiedModelManager {
       // Auto-enable thinking for new Claude models if it was on for old model
       if (newConfig.supportsThinking && !this.thinkingEnabled && oldConfig.supportsThinking) {
         this.thinkingEnabled = true;
+      }
+    } else if (newConfig && !oldConfig) {
+      // First time setting a model - use model's default reasoning effort if available
+      if (newConfig.supportsReasoning && newConfig.reasoningEffort) {
+        this.reasoningEffort = newConfig.reasoningEffort;
       }
     }
   }
@@ -849,10 +860,10 @@ export class UnifiedModelManager {
       text: {
         verbosity: this.verbosity,
       },
-      // Enable reasoning for supported models
+      // Only add reasoning if model supports it
       ...(this.getModelConfig().supportsReasoning && {
         reasoning: {
-          effort: this.reasoningEffort,
+          effort: this.getModelConfig().reasoningEffort || this.reasoningEffort,
           summary: 'detailed', // Reasoning models only support 'detailed', not 'concise' //concise IS for 'computer-use-preview' model
         },
       }),
@@ -1103,9 +1114,10 @@ export class UnifiedModelManager {
       text: {
         verbosity: this.verbosity,
       },
+      // Only add reasoning if model supports it
       ...(this.getModelConfig().supportsReasoning && {
         reasoning: {
-          effort: this.reasoningEffort,
+          effort: this.getModelConfig().reasoningEffort || this.reasoningEffort,
           summary: 'detailed', // Reasoning models only support 'detailed', not 'concise'
         },
       }),

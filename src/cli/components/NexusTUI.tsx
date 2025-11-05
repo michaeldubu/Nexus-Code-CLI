@@ -977,6 +977,17 @@ Now help the user build some cool shit.`;
               thinking: '',
               modelName: event.modelName,
             });
+          } else if (event.type === 'error') {
+            // Handle model errors gracefully - display error and continue
+            currentStreamingMessages.delete(event.modelId);
+            const errorMsg = `❌ ${event.modelName} Error: ${event.error}`;
+            completedMessages.push({
+              role: 'assistant' as const,
+              content: errorMsg,
+              model: event.modelName,
+              timestamp: new Date().toISOString(),
+            });
+            console.error(`\n${errorMsg}\n`);
           } else if (event.type === 'tool_call' && event.toolCall) {
             // Collect tool calls
             hasToolCalls = true;
