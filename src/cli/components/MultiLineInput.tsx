@@ -30,8 +30,17 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
   placeholder = 'Type your message...',
   disabled = false,
 }) => {
-  const [cursorOffset, setCursorOffset] = useState(0);
+  const [cursorOffset, setCursorOffset] = useState(value.length); // Start at end
   const [attachedFiles, setAttachedFiles] = useState<ContentBlock[]>([]);
+  const [showFullContent, setShowFullContent] = useState(true); // For paste truncation
+
+  // Sync cursor with value length when value changes externally (like after submit)
+  React.useEffect(() => {
+    if (value === '') {
+      setCursorOffset(0);
+      setShowFullContent(true);
+    }
+  }, [value]);
 
   // Handle keyboard input
   useInput(
@@ -44,6 +53,7 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
           value.slice(0, cursorOffset) + '\n' + value.slice(cursorOffset);
         onChange(newValue);
         setCursorOffset(cursorOffset + 1);
+        setShowFullContent(true); // Show full when user edits
         return;
       }
 
@@ -54,6 +64,7 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
           value.slice(0, cursorOffset - 1) + '\n' + value.slice(cursorOffset);
         onChange(newValue);
         setCursorOffset(cursorOffset);
+        setShowFullContent(true);
         return;
       }
 
@@ -70,6 +81,7 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
             value.slice(0, cursorOffset - 1) + value.slice(cursorOffset);
           onChange(newValue);
           setCursorOffset(cursorOffset - 1);
+          setShowFullContent(true);
         }
         return;
       }
@@ -80,56 +92,106 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
           const newValue =
             value.slice(0, cursorOffset) + value.slice(cursorOffset + 1);
           onChange(newValue);
+          setShowFullContent(true);
           // Cursor stays in same position
         }
         return;
       }
 
-      // Arrow keys for cursor movement
-      if (key.leftArrow && cursorOffset > 0) {
-        setCursorOffset(cursorOffset - 1);
+      // Arrow keys for cursor movement - SIMPLIFIED!
+      if (key.leftArrow) {
+        setCursorOffset(Math.max(0, cursorOffset - 1));
         return;
       }
 
-      if (key.rightArrow && cursorOffset < value.length) {
-        setCursorOffset(cursorOffset + 1);
+      if (key.rightArrow) {
+        setCursorOffset(Math.min(value.length, cursorOffset + 1));
         return;
       }
 
       if (key.upArrow) {
-        // Move cursor to previous line
-        const lines = value.slice(0, cursorOffset).split('\n');
+        // Move cursor up one line
+        const beforeCursor = value.slice(0, cursorOffset);
+        const lines = beforeCursor.split('\n');
+
         if (lines.length > 1) {
-          const currentLinePos = lines[lines.length - 1].length;
-          const prevLineLength = lines[lines.length - 2].length;
-          const newOffset = cursorOffset - currentLinePos - 1 - Math.min(currentLinePos, prevLineLength);
+          // Get current position in line
+          const currentLineStart = beforeCursor.lastIndexOf('\n', cursorOffset - 1);
+          const currentCol = cursorOffset - currentLineStart - 1;
+
+          // Find previous line start
+          const prevLineEnd = currentLineStart;
+          const prevLineStart = beforeCursor.lastIndexOf('\n', prevLineEnd - 1);
+          const prevLineLength = prevLineEnd - prevLineStart - 1;
+
+          // Move to same column in previous line (or end if shorter)
+          const targetCol = Math.min(currentCol, prevLineLength);
+          const newOffset = prevLineStart + 1 + targetCol;
+
           setCursorOffset(Math.max(0, newOffset));
         }
         return;
       }
 
       if (key.downArrow) {
-        // Move cursor to next line
+        // Move cursor down one line
         const afterCursor = value.slice(cursorOffset);
-        const nextNewline = afterCursor.indexOf('\n');
-        if (nextNewline !== -1) {
-          const lines = value.slice(0, cursorOffset).split('\n');
-          const currentLinePos = lines[lines.length - 1].length;
-          const nextLine = afterCursor.slice(nextNewline + 1);
-          const nextNewline2 = nextLine.indexOf('\n');
-          const nextLineLength = nextNewline2 !== -1 ? nextNewline2 : nextLine.length;
-          const newOffset = cursorOffset + nextNewline + 1 + Math.min(currentLinePos, nextLineLength);
+        const nextNewlineIdx = afterCursor.indexOf('\n');
+
+        if (nextNewlineIdx !== -1) {
+          // Get current position in line
+          const beforeCursor = value.slice(0, cursorOffset);
+          const currentLineStart = beforeCursor.lastIndexOf('\n') + 1;
+          const currentCol = cursorOffset - currentLineStart;
+
+          // Find next line
+          const nextLineStart = cursorOffset + nextNewlineIdx + 1;
+          const restOfText = value.slice(nextLineStart);
+          const nextLineEnd = restOfText.indexOf('\n');
+          const nextLineLength = nextLineEnd !== -1 ? nextLineEnd : restOfText.length;
+
+          // Move to same column in next line (or end if shorter)
+          const targetCol = Math.min(currentCol, nextLineLength);
+          const newOffset = nextLineStart + targetCol;
+
           setCursorOffset(Math.min(value.length, newOffset));
         }
         return;
       }
 
+      // Home key - start of line
+      if (key.home) {
+        const beforeCursor = value.slice(0, cursorOffset);
+        const lineStart = beforeCursor.lastIndexOf('\n') + 1;
+        setCursorOffset(lineStart);
+        return;
+      }
+
+      // End key - end of line
+      if (key.end) {
+        const afterCursor = value.slice(cursorOffset);
+        const lineEnd = afterCursor.indexOf('\n');
+        const newOffset = lineEnd === -1 ? value.length : cursorOffset + lineEnd;
+        setCursorOffset(newOffset);
+        return;
+      }
+
       // Regular character input
       if (input && !key.ctrl && !key.meta) {
+        // Detect large paste (>100 chars at once)
+        const isPaste = input.length > 100;
+
         const newValue =
           value.slice(0, cursorOffset) + input + value.slice(cursorOffset);
         onChange(newValue);
         setCursorOffset(cursorOffset + input.length);
+
+        // If large paste, hide full content initially
+        if (isPaste) {
+          setShowFullContent(false);
+        } else {
+          setShowFullContent(true);
+        }
 
         // Auto-detect file paths when user types/pastes them
         // Look for patterns like /path/to/file.png or ./relative/path.jpg
@@ -232,10 +294,30 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
     }
   };
 
+  // Determine display value (truncated for large pastes)
+  let displayValue = value;
+  let isTruncated = false;
+
+  if (!showFullContent && value.length > 0) {
+    const lines = value.split('\n');
+    if (lines.length > 10) {
+      // Show first 3 lines and last 2 lines with summary in between
+      const firstLines = lines.slice(0, 3).join('\n');
+      const lastLines = lines.slice(-2).join('\n');
+      const lineCount = lines.length;
+      displayValue = `${firstLines}\n\n[pasted content...${lineCount} lines]\n\n${lastLines}`;
+      isTruncated = true;
+    } else if (value.length > 500) {
+      // Just show first 500 chars
+      displayValue = value.substring(0, 500) + `\n\n[pasted content...${value.length} chars]`;
+      isTruncated = true;
+    }
+  }
+
   // Split value into lines for display
-  const lines = value.split('\n');
-  const currentLine = value.slice(0, cursorOffset).split('\n').length - 1;
-  const currentColumn = value.slice(0, cursorOffset).split('\n').pop()?.length || 0;
+  const lines = displayValue.split('\n');
+  const currentLine = isTruncated ? 0 : value.slice(0, cursorOffset).split('\n').length - 1;
+  const currentColumn = isTruncated ? 0 : value.slice(0, cursorOffset).split('\n').pop()?.length || 0;
 
   return (
     <Box flexDirection="column">
@@ -253,11 +335,20 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
         </Box>
       )}
 
+      {/* Truncation hint */}
+      {isTruncated && (
+        <Box marginBottom={1}>
+          <Text color="yellow" dimColor>
+            💡 Large content pasted - showing preview. Full content will be sent. (Start typing to see all)
+          </Text>
+        </Box>
+      )}
+
       {/* Input area */}
       <Box flexDirection="column" borderStyle="round" borderColor="orange" paddingX={1}>
         {lines.map((line, idx) => {
-          // Render line with cursor if this is the current line
-          if (idx === currentLine) {
+          // Render line with cursor if this is the current line (only when not truncated)
+          if (!isTruncated && idx === currentLine) {
             const beforeCursor = line.slice(0, currentColumn);
             const atCursor = line[currentColumn] || ' ';
             const afterCursor = line.slice(currentColumn + 1);
@@ -289,15 +380,22 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
       {/* Help text */}
       <Box marginTop={1}>
         <Text color="gray" dimColor>
-          Enter = send | \+Enter = new line | Esc = cancel
+          Enter = send | \+Enter = new line | ↑↓←→ = navigate | Home/End = line start/end
         </Text>
       </Box>
 
       {/* Line info */}
-      {lines.length > 1 && (
+      {!isTruncated && lines.length > 1 && (
         <Box marginTop={0}>
           <Text color="gray" dimColor>
-            Line {currentLine + 1}, Col {currentColumn} | {value.length} chars
+            Line {currentLine + 1}/{lines.length}, Col {currentColumn + 1} | {value.length} chars
+          </Text>
+        </Box>
+      )}
+      {isTruncated && (
+        <Box marginTop={0}>
+          <Text color="gray" dimColor>
+            {value.split('\n').length} lines, {value.length} chars (preview mode)
           </Text>
         </Box>
       )}
