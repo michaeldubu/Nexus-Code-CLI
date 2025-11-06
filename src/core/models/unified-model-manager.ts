@@ -787,9 +787,10 @@ export class UnifiedModelManager {
 
         // CRITICAL: Preserve thinking blocks during tool use loops
         // When passing tool results back, we must include the complete unmodified thinking blocks
-        if (m.role === 'assistant' && m.thinking) {
+        // Use the saved blocks (with signature) instead of reconstructing from string!
+        if (m.role === 'assistant' && this.isInToolUseLoop && this.lastAssistantThinkingBlocks.length > 0) {
           baseMessage.content = [
-            { type: 'thinking', thinking: m.thinking },
+            ...this.lastAssistantThinkingBlocks, // Complete blocks with signatures!
             ...Array.isArray(baseMessage.content) ? baseMessage.content : [{ type: 'text', text: baseMessage.content }]
           ];
         }
@@ -920,8 +921,8 @@ export class UnifiedModelManager {
           },
         });
       } else if ((contentBlock as any).type === 'thinking') {
-        // Preserve thinking blocks for future tool use loops
-        thinkingBlocks.push({ type: 'thinking', thinking: (contentBlock as any).thinking });
+        // Preserve COMPLETE thinking blocks for future tool use loops (including signature!)
+        thinkingBlocks.push(contentBlock);
       }
     }
 
@@ -1138,9 +1139,10 @@ export class UnifiedModelManager {
 
         // CRITICAL: Preserve thinking blocks during tool use loops
         // When passing tool results back, we must include the complete unmodified thinking blocks
-        if (m.role === 'assistant' && m.thinking) {
+        // Use the saved blocks (with signature) instead of reconstructing from string!
+        if (m.role === 'assistant' && this.isInToolUseLoop && this.lastAssistantThinkingBlocks.length > 0) {
           baseMessage.content = [
-            { type: 'thinking', thinking: m.thinking },
+            ...this.lastAssistantThinkingBlocks, // Complete blocks with signatures!
             ...Array.isArray(baseMessage.content) ? baseMessage.content : [{ type: 'text', text: baseMessage.content }]
           ];
         }
@@ -1278,7 +1280,12 @@ export class UnifiedModelManager {
         }
       } else if (chunk.type === 'content_block_stop') {
         // Save thinking block for later use during tool use loops
-        if (currentThinkingBlock) {
+        // CRITICAL: Preserve complete structure including signature field
+        if (currentThinkingBlock && chunk.content_block) {
+          thinkingBlocks.push(chunk.content_block);
+          currentThinkingBlock = '';
+        } else if (currentThinkingBlock) {
+          // Fallback if content_block not available (shouldn't happen)
           thinkingBlocks.push({ type: 'thinking', thinking: currentThinkingBlock });
           currentThinkingBlock = '';
         }
