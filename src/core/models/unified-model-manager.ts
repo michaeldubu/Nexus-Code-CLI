@@ -1635,7 +1635,75 @@ export class UnifiedModelManager {
   }
 
   /**
-   * Send message to Ollama
+   * Check if an Ollama model exists locally
+   */
+  private async ollamaModelExists(modelName: string): Promise<boolean> {
+    if (!this.ollama) return false;
+
+    try {
+      const models = await this.ollama.list();
+      return models.models.some((m: any) => m.name === modelName || m.name.startsWith(modelName + ':'));
+    } catch (error) {
+      console.error('Error checking Ollama models:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Pull an Ollama model with progress tracking
+   */
+  private async pullOllamaModel(modelName: string): Promise<void> {
+    if (!this.ollama) {
+      throw new Error('Ollama client not initialized');
+    }
+
+    console.log(`\n🔄 Pulling Ollama model: ${modelName}`);
+    console.log('This may take a few minutes depending on model size...\n');
+
+    try {
+      const stream = await this.ollama.pull({ model: modelName, stream: true });
+
+      let lastStatus = '';
+      for await (const chunk of stream) {
+        // Show download progress
+        if (chunk.status && chunk.status !== lastStatus) {
+          if (chunk.status === 'downloading') {
+            const percent = chunk.completed && chunk.total
+              ? Math.round((chunk.completed / chunk.total) * 100)
+              : 0;
+            process.stdout.write(`\r📥 Downloading: ${percent}%`);
+          } else {
+            console.log(`\n${chunk.status}`);
+          }
+          lastStatus = chunk.status;
+        }
+      }
+
+      console.log(`\n✅ Model ${modelName} pulled successfully!\n`);
+    } catch (error: any) {
+      throw new Error(`Failed to pull model ${modelName}: ${error.message}`);
+    }
+  }
+
+  /**
+   * List available Ollama models
+   */
+  async listOllamaModels(): Promise<string[]> {
+    if (!this.ollama) {
+      return [];
+    }
+
+    try {
+      const models = await this.ollama.list();
+      return models.models.map((m: any) => m.name);
+    } catch (error) {
+      console.error('Error listing Ollama models:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Send message to Ollama (with auto-pull if model doesn't exist)
    */
   private async sendOllamaMessage(
     messages: Message[],
@@ -1647,6 +1715,13 @@ export class UnifiedModelManager {
   ): Promise<ModelResponse> {
     if (!this.ollama) {
       throw new Error('Ollama client not initialized');
+    }
+
+    // Check if model exists, if not, pull it automatically
+    const modelExists = await this.ollamaModelExists(this.currentModel);
+    if (!modelExists) {
+      console.log(`⚠️  Model '${this.currentModel}' not found locally.`);
+      await this.pullOllamaModel(this.currentModel);
     }
 
     // Format messages for Ollama
@@ -1681,7 +1756,7 @@ export class UnifiedModelManager {
   }
 
   /**
-   * Stream from Ollama
+   * Stream from Ollama (with auto-pull if model doesn't exist)
    */
   private async *streamOllamaMessage(
     messages: Message[],
@@ -1693,6 +1768,13 @@ export class UnifiedModelManager {
   ): AsyncGenerator<StreamChunk> {
     if (!this.ollama) {
       throw new Error('Ollama client not initialized');
+    }
+
+    // Check if model exists, if not, pull it automatically
+    const modelExists = await this.ollamaModelExists(this.currentModel);
+    if (!modelExists) {
+      console.log(`⚠️  Model '${this.currentModel}' not found locally.`);
+      await this.pullOllamaModel(this.currentModel);
     }
 
     const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
