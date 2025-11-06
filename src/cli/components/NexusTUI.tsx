@@ -26,6 +26,13 @@ import {
 } from './MultiModelManager.js';
 // Multi-Line Input with Image Support
 import { MultiLineInput, ContentBlock as InputContentBlock } from './MultiLineInput.js';
+// Intelligence System
+import { NexusIntelligence } from '../../core/intelligence/nexus-intelligence.js';
+import { IntelligentCommandHandler } from '../../core/intelligence/intelligent-commands.js';
+// Node ESM imports
+import { existsSync, mkdirSync, writeFileSync, appendFileSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 
 // Build full command list including quick switches
 const BASE_COMMANDS: Command[] = [
@@ -91,16 +98,17 @@ interface Props {
   mcpServer: any; // MCPServer
   mcpManager: any; // MCPManager
   toolDefinitions: any[]; // Tool definitions for AI
-  intelligence?: any; // NexusIntelligence (optional for backwards compat)
-  intelligentCommands?: any; // IntelligentCommandHandler (optional)
+  workspaceRoot: string; // For initializing intelligence
 }
 
-export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools, memoryTool, mcpServer, mcpManager, toolDefinitions, intelligence, intelligentCommands }) => {
+export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools, memoryTool, mcpServer, mcpManager, toolDefinitions, workspaceRoot }) => {
   const { exit } = useApp();
   const [terminalHeight] = useStdoutDimensions();
 
   // State
   const [showBoot, setShowBoot] = useState(true);
+  const [intelligence, setIntelligence] = useState<any>(undefined);
+  const [intelligentCommands, setIntelligentCommands] = useState<any>(undefined);
   const [messages, setMessages] = useState<Array<Message & { model?: string; agent?: string; timestamp?: string }>>([]);
   const [inputValue, setInputValue] = useState('');
   const [inputHistory, setInputHistory] = useState<string[]>([]);
@@ -1028,16 +1036,16 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       case '/export':
         try {
           const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
-          const exportPath = `${process.env.HOME}/.nexus/exports/conversation-${timestamp}.json`;
+          const exportsDir = join(homedir(), '.nexus', 'exports');
+          const exportPath = join(exportsDir, `conversation-${timestamp}.json`);
           const exportData = JSON.stringify(messages, null, 2);
 
           // Ensure exports directory exists
-          const exportsDir = `${process.env.HOME}/.nexus/exports`;
-          if (!require('fs').existsSync(exportsDir)) {
-            require('fs').mkdirSync(exportsDir, { recursive: true });
+          if (!existsSync(exportsDir)) {
+            mkdirSync(exportsDir, { recursive: true });
           }
 
-          require('fs').writeFileSync(exportPath, exportData, 'utf-8');
+          writeFileSync(exportPath, exportData, 'utf-8');
 
           setMessages([
             ...messages,
@@ -1339,16 +1347,17 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   - Example: memory({ command: "create", path: "/memories/project_notes.md", file_text: "..." })
   - NOTE: ALWAYS check /memories at start of new sessions
 
-**image_generation** - Generate images using gpt-image-1 🎨
+**generate_image** - Generate images using OpenAI's gpt-image-1 🎨🔥
+  - 🔥 CROSS-PROVIDER MAGIC: Claude can generate images by delegating to OpenAI!
   - Use when: User asks to draw, create, generate, or edit images
-  - This is a built-in tool - you can call it from ANY model (gpt-5, gpt-4.1, etc.)
+  - Works from ANY model - Claude, GPT-5, GPT-4.1, all of them!
+  - Behind the scenes: Calls OpenAI's gpt-image-1 even when using Claude
   - Images automatically saved to .nexus/images/ directory with timestamps
-  - Supports progressive streaming with up to 3 partial images
-  - Example: When user says "draw a cat", just call the tool - it handles everything
-  - Settings: moderation='low', quality='auto', size='auto', format='png'
-  - The tool will return a file path, NOT base64 spam
-  - Use terms like "draw" or "edit" in prompts for best results
-  - You can do multi-turn editing by referencing previous images
+  - Example: generate_image({ prompt: "A cyberpunk cat wearing sunglasses" })
+  - Optional params: quality ('low'|'medium'|'high'|'auto'), size ('1024x1024'|'1536x1024'|'1024x1536'|'auto')
+  - The tool returns a file path - user can open the image
+  - Use detailed, specific prompts for best results
+  - Pro tip: Describe style, colors, composition, lighting, mood in your prompt
 
 ${mcpManager?.isReady() ? `
 ## 🧠 JETBRAINS INTELLIGENCE TOOLS (PSI-powered, not regex!)
@@ -1525,8 +1534,70 @@ Now help the user build some cool shit.`;
           try {
             let result;
 
+            // 🔥 CROSS-PROVIDER DELEGATION: Claude -> OpenAI Image Generation
+            if (toolName === 'generate_image') {
+              console.log('\n🔥 Cross-provider delegation: Claude -> OpenAI gpt-image-1\n');
+
+              try {
+                // Call OpenAI image generation API directly
+                const OpenAI = require('openai');
+                const openai = new OpenAI({
+                  apiKey: process.env.OPENAI_API_KEY,
+                });
+
+                const prompt = toolArgs.prompt || '';
+                const quality = toolArgs.quality || 'auto';
+                const size = toolArgs.size || 'auto';
+
+                console.log(`🎨 Generating image: "${prompt.substring(0, 60)}..."\n`);
+
+                // Generate image using OpenAI API
+                const response = await openai.images.generate({
+                  model: 'gpt-image-1',
+                  prompt: prompt,
+                  quality: quality,
+                  size: size,
+                  moderation: 'low',
+                  output_format: 'png',
+                  response_format: 'b64_json', // Always get base64 for gpt-image-1
+                });
+
+                // Extract base64 image
+                const imageBase64 = response.data[0]?.b64_json;
+
+                if (!imageBase64) {
+                  throw new Error('No image data received from OpenAI');
+                }
+
+                // Save image to .nexus/images/
+                const imagesDir = join(fileTools.getWorkingDirectory(), '.nexus', 'images');
+                if (!existsSync(imagesDir)) {
+                  mkdirSync(imagesDir, { recursive: true });
+                }
+
+                const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
+                const filename = `nexus-image-${timestamp}.png`;
+                const filepath = join(imagesDir, filename);
+
+                const imageBuffer = Buffer.from(imageBase64, 'base64');
+                writeFileSync(filepath, imageBuffer);
+
+                console.log(`✅ Image generated and saved: ${filepath}\n`);
+
+                result = {
+                  success: true,
+                  data: `Image successfully generated and saved!\n\nPath: ${filepath}\nFilename: ${filename}\n\n🎨 Cross-provider magic: Claude delegated to OpenAI gpt-image-1`
+                };
+              } catch (imgError: any) {
+                console.error(`\n❌ Image generation failed: ${imgError.message}\n`);
+                result = {
+                  success: false,
+                  error: `Failed to generate image: ${imgError.message}. Make sure you have OPENAI_API_KEY configured.`
+                };
+              }
+            }
             // Handle MCP (JetBrains) tools
-            if (toolName?.startsWith('context_') && mcpManager?.isReady()) {
+            else if (toolName?.startsWith('context_') && mcpManager?.isReady()) {
               const mcpClient = mcpManager.getClient();
               const mcpResult = await mcpClient.callTool(toolName, toolArgs);
               result = {
@@ -1541,17 +1612,15 @@ Now help the user build some cool shit.`;
             if (toolName === 'image_generation' && result.success) {
               try {
                 // Create .nexus/images directory if it doesn't exist
-                const fs = require('fs');
-                const path = require('path');
-                const imagesDir = path.join(fileTools.getWorkingDirectory(), '.nexus', 'images');
-                if (!fs.existsSync(imagesDir)) {
-                  fs.mkdirSync(imagesDir, { recursive: true });
+                const imagesDir = join(fileTools.getWorkingDirectory(), '.nexus', 'images');
+                if (!existsSync(imagesDir)) {
+                  mkdirSync(imagesDir, { recursive: true });
                 }
 
                 // Generate timestamp filename
                 const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
                 const filename = `nexus-image-${timestamp}.png`;
-                const filepath = path.join(imagesDir, filename);
+                const filepath = join(imagesDir, filename);
 
                 // Extract base64 from result (format varies by API)
                 let imageBase64 = result.data;
@@ -1563,7 +1632,7 @@ Now help the user build some cool shit.`;
 
                 // Save image to disk
                 const imageBuffer = Buffer.from(imageBase64, 'base64');
-                fs.writeFileSync(filepath, imageBuffer);
+                writeFileSync(filepath, imageBuffer);
 
                 // Update result to show path instead of base64
                 result.data = `Image saved to: ${filepath}\n\n🎨 Generated image: ${filename}`;
@@ -1635,6 +1704,10 @@ Now help the user build some cool shit.`;
         // Filter out empty assistant messages - THIS FIXES THE API ERROR!
         const nonEmptyMessages = completedMessages.filter(msg => {
           if (msg.role !== 'assistant') return true;
+
+          // Keep message if it has thinking/reasoning even if content is empty
+          if (msg.thinking) return true;
+
           if (typeof msg.content === 'string') {
             return msg.content.trim() !== '';
           }

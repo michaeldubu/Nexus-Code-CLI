@@ -7,6 +7,9 @@
 import { config as dotenvConfig } from 'dotenv';
 import React from 'react';
 import { render } from 'ink';
+import { existsSync, mkdirSync, appendFileSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 import { NexusFileSystem } from '../core/filesystem/nexus-fs.js';
 import { FileTools } from '../core/tools/file-tools.js';
 import { MemoryTool } from '../core/tools/memory-tool.js';
@@ -17,20 +20,21 @@ import { MCPServer } from '../core/mcp/client.js';
 import { registerFileTools, getFileToolsDefinitions } from '../core/mcp/file-tools-mcp.js';
 import { registerWebTools, getWebToolsDefinitions } from '../core/mcp/web-tools-mcp.js';
 import { getMCPManager } from '../core/mcp/mcp-manager.js';
-import { NexusIntelligence } from '../core/intelligence/nexus-intelligence.js';
-import { IntelligentCommandHandler } from '../core/intelligence/intelligent-commands.js';
 
 // Load environment variables
 dotenvConfig();
 
 async function main() {
-  // Validate API keys
+  // Validate API keys - at least ONE provider is required
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
   const googleKey = process.env.GOOGLE_API_KEY;
 
-  if (!anthropicKey) {
-    console.error('❌ Missing ANTHROPIC_API_KEY in .env');
+  if (!anthropicKey && !openaiKey && !googleKey) {
+    console.error('❌ No API keys found! Set at least one of:');
+    console.error('   - ANTHROPIC_API_KEY (Claude)');
+    console.error('   - OPENAI_API_KEY (GPT)');
+    console.error('   - GOOGLE_API_KEY (Gemini)');
     process.exit(1);
   }
 
@@ -103,63 +107,28 @@ async function main() {
     mcpConnected = await mcpManager.autoConnect();
     if (mcpConnected) {
       // Log to file - no console spam
-      const fs = require('fs');
-      const logDir = `${process.env.HOME}/.nexus/logs`;
-      if (!fs.existsSync(logDir)) {
-        fs.mkdirSync(logDir, { recursive: true });
+      const logDir = join(homedir(), '.nexus', 'logs');
+      if (!existsSync(logDir)) {
+        mkdirSync(logDir, { recursive: true });
       }
-      fs.appendFileSync(
-        `${logDir}/mcp.log`,
+      appendFileSync(
+        join(logDir, 'mcp.log'),
         `[${new Date().toISOString()}] Connected to JetBrains plugin: ${mcpManager.getCurrentInstance()?.projectName}\n`
       );
     }
   } catch (error) {
     // Log to file - JetBrains plugin is OPTIONAL (TypeScript intelligence works standalone)
-    const fs = require('fs');
-    const logDir = `${process.env.HOME}/.nexus/logs`;
-    if (!fs.existsSync(logDir)) {
-      fs.mkdirSync(logDir, { recursive: true });
+    const logDir = join(homedir(), '.nexus', 'logs');
+    if (!existsSync(logDir)) {
+      mkdirSync(logDir, { recursive: true });
     }
-    fs.appendFileSync(
-      `${logDir}/mcp.log`,
+    appendFileSync(
+      join(logDir, 'mcp.log'),
       `[${new Date().toISOString()}] JetBrains plugin not available (optional - TypeScript intelligence active)\n`
     );
   }
 
-  // 🧠 Initialize Context Intelligence Engine (BACKGROUND - non-blocking!)
-  let intelligence: NexusIntelligence | undefined;
-  let intelligentCommands: IntelligentCommandHandler | undefined;
-
-  // Start in background - DON'T BLOCK TUI STARTUP
-  (async () => {
-    try {
-      intelligence = new NexusIntelligence(
-        process.cwd(),
-        fileTools,
-        memoryTool,
-        fileSystem
-      );
-      await intelligence.initialize();
-      intelligentCommands = new IntelligentCommandHandler({
-        intelligence,
-        fileTools,
-        memory: memoryTool,
-        nexusFs: fileSystem,
-      });
-      // Silent - all logs go to ~/.nexus/logs/intelligence.log
-    } catch (error) {
-      // Log to file, not console
-      const fs = require('fs');
-      const logDir = `${process.env.HOME}/.nexus/logs`;
-      if (!fs.existsSync(logDir)) {
-        fs.mkdirSync(logDir, { recursive: true });
-      }
-      fs.appendFileSync(
-        `${logDir}/intelligence.log`,
-        `[${new Date().toISOString()}] Init failed: ${error}\n`
-      );
-    }
-  })();
+  // 🧠 Intelligence will initialize AFTER TUI mounts (truly non-blocking!)
 
   // Get tool definitions for passing to AI models
   const toolDefinitions = [
@@ -183,6 +152,31 @@ async function main() {
           view_range: { type: 'array', items: { type: 'number' } },
         },
         required: ['command'],
+      },
+    },
+    // 🎨 Image Generation (Cross-provider delegation: Claude -> OpenAI gpt-image-1)
+    {
+      name: 'generate_image',
+      description: 'Generate or edit images using AI. Supports creating new images from text descriptions, editing existing images, and multi-turn refinement. Images are saved to .nexus/images/ directory.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          prompt: {
+            type: 'string',
+            description: 'Detailed description of the image to generate or edit. Be specific about style, colors, composition, and any important details.'
+          },
+          quality: {
+            type: 'string',
+            enum: ['low', 'medium', 'high', 'auto'],
+            description: 'Quality level for the generated image. Default: auto'
+          },
+          size: {
+            type: 'string',
+            enum: ['1024x1024', '1536x1024', '1024x1536', 'auto'],
+            description: 'Size of the generated image. Default: auto'
+          },
+        },
+        required: ['prompt'],
       },
     },
     // 🎨 Image Generation (OpenAI built-in tool via Responses API)
@@ -230,11 +224,11 @@ async function main() {
       mcpServer,
       mcpManager,
       toolDefinitions,
-      intelligence,
-      intelligentCommands,
+      workspaceRoot: process.cwd(), // Pass workspace root for intelligence init
     }),
     {
       exitOnCtrlC: false, // Disable Ink's automatic exit
+      patchConsole: false, // Don't hijack console.log
     }
   );
 }
