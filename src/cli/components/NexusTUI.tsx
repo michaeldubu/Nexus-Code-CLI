@@ -1700,6 +1700,10 @@ Now help the user build some cool shit.`;
         // Filter out empty assistant messages - THIS FIXES THE API ERROR!
         const nonEmptyMessages = completedMessages.filter(msg => {
           if (msg.role !== 'assistant') return true;
+
+          // Keep message if it has thinking/reasoning even if content is empty
+          if (msg.thinking) return true;
+
           if (typeof msg.content === 'string') {
             return msg.content.trim() !== '';
           }
