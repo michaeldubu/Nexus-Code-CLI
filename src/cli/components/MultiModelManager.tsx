@@ -136,7 +136,17 @@ export async function* streamMultiModelMessage(
           let fullContent = '';
           let fullThinking = '';
 
-          for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt, tools })) {
+          // Filter tools for this model's provider
+          const modelConfig = AVAILABLE_MODELS[modelId];
+          const filteredTools = tools?.filter(tool => {
+            // image_generation is OpenAI-only (Responses API built-in)
+            if (tool.type === 'image_generation') {
+              return modelConfig?.provider === 'openai';
+            }
+            return true; // Keep all other tools
+          });
+
+          for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt, tools: filteredTools })) {
             if (chunk.type === 'text') {
               fullContent += chunk.content;
               yield {
@@ -206,7 +216,17 @@ export async function* streamMultiModelMessage(
           let fullContent = '';
           let fullThinking = '';
 
-          for await (const chunk of modelManager.streamMessage(workingHistory, { systemPrompt: enhancedPrompt, tools })) {
+          // Filter tools for this model's provider
+          const modelConfig = AVAILABLE_MODELS[modelId];
+          const filteredTools = tools?.filter(tool => {
+            // image_generation is OpenAI-only (Responses API built-in)
+            if (tool.type === 'image_generation') {
+              return modelConfig?.provider === 'openai';
+            }
+            return true; // Keep all other tools
+          });
+
+          for await (const chunk of modelManager.streamMessage(workingHistory, { systemPrompt: enhancedPrompt, tools: filteredTools })) {
             if (chunk.type === 'text') {
               fullContent += chunk.content;
               yield {
@@ -282,7 +302,17 @@ export async function* streamMultiModelMessage(
           let fullContent = '';
           let fullThinking = '';
 
-          for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt, tools })) {
+          // Filter tools for this model's provider
+          const modelConfig = AVAILABLE_MODELS[modelId];
+          const filteredTools = tools?.filter(tool => {
+            // image_generation is OpenAI-only (Responses API built-in)
+            if (tool.type === 'image_generation') {
+              return modelConfig?.provider === 'openai';
+            }
+            return true; // Keep all other tools
+          });
+
+          for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt, tools: filteredTools })) {
             if (chunk.type === 'text') {
               fullContent += chunk.content;
               yield {
