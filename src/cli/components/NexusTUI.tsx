@@ -1339,6 +1339,17 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   - Example: memory({ command: "create", path: "/memories/project_notes.md", file_text: "..." })
   - NOTE: ALWAYS check /memories at start of new sessions
 
+**image_generation** - Generate images using gpt-image-1 🎨
+  - Use when: User asks to draw, create, generate, or edit images
+  - This is a built-in tool - you can call it from ANY model (gpt-5, gpt-4.1, etc.)
+  - Images automatically saved to .nexus/images/ directory with timestamps
+  - Supports progressive streaming with up to 3 partial images
+  - Example: When user says "draw a cat", just call the tool - it handles everything
+  - Settings: moderation='low', quality='auto', size='auto', format='png'
+  - The tool will return a file path, NOT base64 spam
+  - Use terms like "draw" or "edit" in prompts for best results
+  - You can do multi-turn editing by referencing previous images
+
 ${mcpManager?.isReady() ? `
 ## 🧠 JETBRAINS INTELLIGENCE TOOLS (PSI-powered, not regex!)
 
@@ -1524,6 +1535,44 @@ Now help the user build some cool shit.`;
               };
             } else {
               result = await mcpServer.executeTool(toolName, toolArgs);
+            }
+
+            // 🎨 Handle image generation specially
+            if (toolName === 'image_generation' && result.success) {
+              try {
+                // Create .nexus/images directory if it doesn't exist
+                const fs = require('fs');
+                const path = require('path');
+                const imagesDir = path.join(fileTools.getWorkingDirectory(), '.nexus', 'images');
+                if (!fs.existsSync(imagesDir)) {
+                  fs.mkdirSync(imagesDir, { recursive: true });
+                }
+
+                // Generate timestamp filename
+                const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
+                const filename = `nexus-image-${timestamp}.png`;
+                const filepath = path.join(imagesDir, filename);
+
+                // Extract base64 from result (format varies by API)
+                let imageBase64 = result.data;
+                if (typeof result.data === 'object' && result.data.b64_json) {
+                  imageBase64 = result.data.b64_json;
+                } else if (typeof result.data === 'object' && result.data.result) {
+                  imageBase64 = result.data.result;
+                }
+
+                // Save image to disk
+                const imageBuffer = Buffer.from(imageBase64, 'base64');
+                fs.writeFileSync(filepath, imageBuffer);
+
+                // Update result to show path instead of base64
+                result.data = `Image saved to: ${filepath}\n\n🎨 Generated image: ${filename}`;
+
+                console.log(`\n🎨 Image saved: ${filepath}\n`);
+              } catch (imgError: any) {
+                console.error(`\n❌ Failed to save image: ${imgError.message}\n`);
+                result.data = `Image generated but failed to save: ${imgError.message}`;
+              }
             }
 
             if (result.success) {

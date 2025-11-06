@@ -185,6 +185,17 @@ async function main() {
         required: ['command'],
       },
     },
+    // 🎨 Image Generation (OpenAI built-in tool via Responses API)
+    {
+      type: 'image_generation',
+      partial_images: 3, // Max progressive images for streaming
+      moderation: 'low', // Less restrictive filtering
+      model: 'gpt-image-1', // Default model
+      output_format: 'png', // PNG format
+      quality: 'auto', // Let model decide quality
+      size: 'auto', // Let model decide size
+      background: 'auto', // Let model decide background
+    },
   ];
 
   // Handle Ctrl+C - require DOUBLE press to exit! 🔥

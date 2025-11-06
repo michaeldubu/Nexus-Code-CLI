@@ -189,7 +189,6 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     name: 'GPT-4.1',
     provider: 'openai',
     supportsReasoning: false,
-    reasoningEffort: 'medium',
     maxTokens: 32768,
     contextWindow: 128000,
   },
@@ -205,8 +204,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'gpt-4o',
     name: 'GPT-4o',
     provider: 'openai',
-    supportsReasoning: true,
-    reasoningEffort: 'medium',
+    supportsReasoning: false,
     supportsVision: true,
     maxTokens: 16384,
     contextWindow: 128000,
@@ -215,8 +213,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'gpt-4o-mini',
     name: 'GPT-4o Mini',
     provider: 'openai',
-    supportsReasoning: true,
-    reasoningEffort: 'medium',
+    supportsReasoning: false,
     supportsVision: true,
     maxTokens: 16384,
     contextWindow: 128000,
@@ -225,8 +222,7 @@ export const AVAILABLE_MODELS: Record<string, ModelConfig> = {
     id: 'gpt-4o-search-preview',
     name: 'GPT-4o Search',
     provider: 'openai',
-    supportsReasoning: true,
-    reasoningEffort: 'medium',
+    supportsReasoning: false,
     supportsVision: true,
     maxTokens: 16384,
     contextWindow: 128000,
@@ -407,8 +403,8 @@ export class UnifiedModelManager {
   private computerUseEnabled: boolean = false; // Computer use capability
   private promptCachingEnabled: boolean = true; //Prompt caching (enabled by default)
   private skillsEnabled: boolean = true; // Agent Skills support
-  private reasoningEffort: 'minimal' | 'low' | 'medium' | 'high' = 'high';
-  private verbosity: 'low' | 'high' = 'high'; // GPT-5 verbosity control (ONLY low/high per API docs)
+  private reasoningEffort: 'off' | 'minimal' | 'low' | 'medium' | 'high' = 'high';
+  private verbosity: 'low' | 'medium' | 'high' = 'medium'; // Verbosity control (low/medium/high per Responses API)
   private lastResponseId?: string;
   private conversationHistory: Message[] = []; //rolling context window management
   private contextManager?: ContextWindowManager; //Context window manager
@@ -543,6 +539,14 @@ export class UnifiedModelManager {
       // Auto-enable thinking for new Claude models if it was on for old model
       if (newConfig.supportsThinking && !this.thinkingEnabled && oldConfig.supportsThinking) {
         this.thinkingEnabled = true;
+      }
+
+      // Auto-adjust verbosity for GPT-5 variants (high for better full code)
+      if (newConfig.provider === 'openai' && modelId.startsWith('gpt-5')) {
+        this.verbosity = 'high';
+      } else if (oldConfig.provider === 'openai' && this.currentModel.startsWith('gpt-5')) {
+        // Switching away from GPT-5, reset to medium
+        this.verbosity = 'medium';
       }
     }
   }
@@ -681,23 +685,23 @@ export class UnifiedModelManager {
     const levels: Array<'off' | 'minimal' | 'low' | 'medium' | 'high'> = ['off', 'minimal', 'low', 'medium', 'high'];
     const currentIndex = levels.indexOf(this.reasoningEffort as any);
     const nextLevel = levels[(currentIndex + 1) % levels.length];
-    this.reasoningEffort = nextLevel === 'off' ? 'low' : nextLevel; // Store actual level
+    this.reasoningEffort = nextLevel; // Store actual level including 'off'
     return nextLevel;
   }
 
   /**
    * Get reasoning effort
    */
-  getReasoningEffort(): 'minimal' | 'low' | 'medium' | 'high' {
+  getReasoningEffort(): 'off' | 'minimal' | 'low' | 'medium' | 'high' {
     return this.reasoningEffort;
   }
 
   /**
    * Set reasoning effort (with validation for GPT-5 Pro)
    */
-  setReasoningEffort(effort: 'minimal' | 'low' | 'medium' | 'high'): void {
+  setReasoningEffort(effort: 'off' | 'minimal' | 'low' | 'medium' | 'high'): void {
     // GPT-5 Pro only supports 'high' reasoning
-    if (this.currentModel === 'gpt-5-pro' && effort !== 'high') {
+    if (this.currentModel === 'gpt-5-pro' && effort !== 'high' && effort !== 'off') {
       console.warn('⚠️ GPT-5 Pro only supports high reasoning effort. Ignoring change.');
       return;
     }
@@ -705,16 +709,16 @@ export class UnifiedModelManager {
   }
 
   /**
-   * Get verbosity level (GPT-5 specific)
+   * Get verbosity level
    */
-  getVerbosity(): 'low' | 'high' {
+  getVerbosity(): 'low' | 'medium' | 'high' {
     return this.verbosity;
   }
 
   /**
-   * Set verbosity level (GPT-5 specific)
+   * Set verbosity level
    */
-  setVerbosity(level: 'low' | 'high'): void {
+  setVerbosity(level: 'low' | 'medium' | 'high'): void {
     this.verbosity = level;
   }
 
@@ -1008,9 +1012,9 @@ export class UnifiedModelManager {
       text: {
         verbosity: this.verbosity,
       },
-      // Enable reasoning for supported models
+      // Enable reasoning for supported models (only if not set to 'off')
       // CRITICAL: Use model-specific reasoningEffort, not global setting!
-      ...(this.getModelConfig().supportsReasoning && {
+      ...(this.getModelConfig().supportsReasoning && this.reasoningEffort !== 'off' && {
         reasoning: {
           effort: this.getModelConfig().reasoningEffort || this.reasoningEffort,
           summary: 'detailed', // Reasoning models only support 'detailed', not 'concise' //concise IS for 'computer-use-preview' model
@@ -1355,8 +1359,8 @@ export class UnifiedModelManager {
       text: {
         verbosity: this.verbosity,
       },
-      // CRITICAL: Use model-specific reasoningEffort, not global setting!
-      ...(this.getModelConfig().supportsReasoning && {
+      // CRITICAL: Use model-specific reasoningEffort, not global setting! (only if not set to 'off')
+      ...(this.getModelConfig().supportsReasoning && this.reasoningEffort !== 'off' && {
         reasoning: {
           effort: this.getModelConfig().reasoningEffort || this.reasoningEffort,
           summary: 'detailed',
