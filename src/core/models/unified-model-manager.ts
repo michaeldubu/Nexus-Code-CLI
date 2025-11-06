@@ -61,12 +61,13 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { Ollama } from 'ollama';
 import { toAnthropicContent, contentToText } from '../utils/content-helpers.js';
 import { mcpToAnthropicTools, mcpToOpenAITools, mcpToGoogleTools } from '../utils/tool-converter.js';
 import { ContextWindowManager } from '../utils/context-manager.js';
 import { enablePromptCaching } from '../utils/prompt-caching.js';
 
-export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'ollama'; //TODO add ollama
+export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'ollama';
 
 export interface ModelConfig {
   id: string;
@@ -397,6 +398,7 @@ export class UnifiedModelManager {
   private anthropicKey?: string; // Store key for recreating clients with beta headers
   private openai?: OpenAI;
   private google?: GoogleGenerativeAI;
+  private ollama?: Ollama;
   private currentModel: string;
   private thinkingEnabled: boolean = true;
   private interleavedThinkingEnabled: boolean = true; // Interleaved thinking
@@ -415,6 +417,7 @@ export class UnifiedModelManager {
     anthropicKey?: string,
     openaiKey?: string,
     googleKey?: string,
+    ollamaHost?: string,
     defaultModel?: string
   ) {
     // Initialize multiple Anthropic clients with different timeout configurations
@@ -446,6 +449,9 @@ export class UnifiedModelManager {
     if (googleKey) {
       this.google = new GoogleGenerativeAI(googleKey);
     }
+    if (ollamaHost) {
+      this.ollama = new Ollama({ host: ollamaHost });
+    }
 
     // Set default model to first available provider
     if (defaultModel && this.isModelAvailable(defaultModel)) {
@@ -469,7 +475,7 @@ export class UnifiedModelManager {
   }
 
   /**
-   * Check if a model is available (has API key)
+   * Check if a model is available (has API key or connection)
    */
   private isModelAvailable(modelId: string): boolean {
     const config = AVAILABLE_MODELS[modelId];
@@ -482,6 +488,8 @@ export class UnifiedModelManager {
         return !!this.openai;
       case 'google':
         return !!this.google;
+      case 'ollama':
+        return !!this.ollama;
       default:
         return false;
     }
@@ -758,6 +766,8 @@ export class UnifiedModelManager {
       return this.sendOpenAIMessage(messages, options);
     } else if (config.provider === 'google') {
       return this.sendGeminiMessage(messages, options);
+    } else if (config.provider === 'ollama') {
+      return this.sendOllamaMessage(messages, options);
     } else {
       throw new Error(`Unsupported provider: ${config.provider}`);
     }
@@ -1109,6 +1119,8 @@ export class UnifiedModelManager {
       yield* this.streamOpenAIMessage(messages, options);
     } else if (config.provider === 'google') {
       yield* this.streamGeminiMessage(messages, options);
+    } else if (config.provider === 'ollama') {
+      yield* this.streamOllamaMessage(messages, options);
     } else {
       throw new Error(`Unsupported provider: ${config.provider}`);
     }
@@ -1620,6 +1632,102 @@ export class UnifiedModelManager {
     }
 
     yield { type: 'done' };
+  }
+
+  /**
+   * Send message to Ollama
+   */
+  private async sendOllamaMessage(
+    messages: Message[],
+    options: {
+      temperature?: number;
+      maxTokens?: number;
+      systemPrompt?: string;
+    }
+  ): Promise<ModelResponse> {
+    if (!this.ollama) {
+      throw new Error('Ollama client not initialized');
+    }
+
+    // Format messages for Ollama
+    const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
+    const systemPromptText = typeof systemPrompt === 'string' ? systemPrompt : contentToText(systemPrompt || '');
+
+    const ollamaMessages = messages
+      .filter(m => m.role !== 'system')
+      .map(m => ({
+        role: m.role,
+        content: typeof m.content === 'string' ? m.content : contentToText(m.content),
+      }));
+
+    const response = await this.ollama.chat({
+      model: this.currentModel,
+      messages: ollamaMessages as any,
+      stream: false,
+      options: {
+        temperature: options.temperature !== undefined ? options.temperature : 1.0,
+        num_predict: options.maxTokens || this.getModelConfig().maxTokens,
+      },
+      ...(systemPromptText && { system: systemPromptText }),
+    });
+
+    return {
+      content: response.message.content,
+      usage: {
+        inputTokens: response.prompt_eval_count || 0,
+        outputTokens: response.eval_count || 0,
+      },
+    };
+  }
+
+  /**
+   * Stream from Ollama
+   */
+  private async *streamOllamaMessage(
+    messages: Message[],
+    options: {
+      temperature?: number;
+      maxTokens?: number;
+      systemPrompt?: string;
+    }
+  ): AsyncGenerator<StreamChunk> {
+    if (!this.ollama) {
+      throw new Error('Ollama client not initialized');
+    }
+
+    const systemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
+    const systemPromptText = typeof systemPrompt === 'string' ? systemPrompt : contentToText(systemPrompt || '');
+
+    const ollamaMessages = messages
+      .filter(m => m.role !== 'system')
+      .map(m => ({
+        role: m.role,
+        content: typeof m.content === 'string' ? m.content : contentToText(m.content),
+      }));
+
+    const stream = await this.ollama.chat({
+      model: this.currentModel,
+      messages: ollamaMessages as any,
+      stream: true,
+      options: {
+        temperature: options.temperature !== undefined ? options.temperature : 1.0,
+        num_predict: options.maxTokens || this.getModelConfig().maxTokens,
+      },
+      ...(systemPromptText && { system: systemPromptText }),
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.message?.content) {
+        yield {
+          type: 'text',
+          content: chunk.message.content,
+        };
+      }
+
+      if (chunk.done) {
+        yield { type: 'done' };
+      }
+    }
   }
 
   /**

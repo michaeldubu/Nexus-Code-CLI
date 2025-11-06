@@ -28,6 +28,7 @@ async function main() {
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
   const googleKey = process.env.GOOGLE_API_KEY;
+  const ollamaHost = process.env.OLLAMA_HOST; // Optional: defaults to http://localhost:11434
 
   if (!anthropicKey) {
     console.error('❌ Missing ANTHROPIC_API_KEY in .env');
@@ -60,7 +61,8 @@ async function main() {
   const modelManager = new UnifiedModelManager(
     anthropicKey,
     openaiKey,
-    googleKey
+    googleKey,
+    ollamaHost
   );
 
   // Initialize MCP Server and register file tools + web tools + memory
