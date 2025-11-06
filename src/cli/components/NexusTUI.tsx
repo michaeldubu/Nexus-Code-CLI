@@ -1526,6 +1526,44 @@ Now help the user build some cool shit.`;
               result = await mcpServer.executeTool(toolName, toolArgs);
             }
 
+            // 🎨 Handle image generation specially
+            if (toolName === 'image_generation' && result.success) {
+              try {
+                // Create .nexus/images directory if it doesn't exist
+                const fs = require('fs');
+                const path = require('path');
+                const imagesDir = path.join(fileTools.getWorkingDirectory(), '.nexus', 'images');
+                if (!fs.existsSync(imagesDir)) {
+                  fs.mkdirSync(imagesDir, { recursive: true });
+                }
+
+                // Generate timestamp filename
+                const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
+                const filename = `nexus-image-${timestamp}.png`;
+                const filepath = path.join(imagesDir, filename);
+
+                // Extract base64 from result (format varies by API)
+                let imageBase64 = result.data;
+                if (typeof result.data === 'object' && result.data.b64_json) {
+                  imageBase64 = result.data.b64_json;
+                } else if (typeof result.data === 'object' && result.data.result) {
+                  imageBase64 = result.data.result;
+                }
+
+                // Save image to disk
+                const imageBuffer = Buffer.from(imageBase64, 'base64');
+                fs.writeFileSync(filepath, imageBuffer);
+
+                // Update result to show path instead of base64
+                result.data = `Image saved to: ${filepath}\n\n🎨 Generated image: ${filename}`;
+
+                console.log(`\n🎨 Image saved: ${filepath}\n`);
+              } catch (imgError: any) {
+                console.error(`\n❌ Failed to save image: ${imgError.message}\n`);
+                result.data = `Image generated but failed to save: ${imgError.message}`;
+              }
+            }
+
             if (result.success) {
               // Intelligent truncation based on tool type to prevent UI slowdowns
               let displayData = result.data;
