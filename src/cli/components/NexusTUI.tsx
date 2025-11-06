@@ -1339,6 +1339,17 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   - Example: memory({ command: "create", path: "/memories/project_notes.md", file_text: "..." })
   - NOTE: ALWAYS check /memories at start of new sessions
 
+**image_generation** - Generate images using gpt-image-1 🎨
+  - Use when: User asks to draw, create, generate, or edit images
+  - This is a built-in tool - you can call it from ANY model (gpt-5, gpt-4.1, etc.)
+  - Images automatically saved to .nexus/images/ directory with timestamps
+  - Supports progressive streaming with up to 3 partial images
+  - Example: When user says "draw a cat", just call the tool - it handles everything
+  - Settings: moderation='low', quality='auto', size='auto', format='png'
+  - The tool will return a file path, NOT base64 spam
+  - Use terms like "draw" or "edit" in prompts for best results
+  - You can do multi-turn editing by referencing previous images
+
 ${mcpManager?.isReady() ? `
 ## 🧠 JETBRAINS INTELLIGENCE TOOLS (PSI-powered, not regex!)
 
