@@ -185,6 +185,31 @@ async function main() {
         required: ['command'],
       },
     },
+    // 🎨 Image Generation (Cross-provider delegation: Claude -> OpenAI gpt-image-1)
+    {
+      name: 'generate_image',
+      description: 'Generate or edit images using AI. Supports creating new images from text descriptions, editing existing images, and multi-turn refinement. Images are saved to .nexus/images/ directory.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          prompt: {
+            type: 'string',
+            description: 'Detailed description of the image to generate or edit. Be specific about style, colors, composition, and any important details.'
+          },
+          quality: {
+            type: 'string',
+            enum: ['low', 'medium', 'high', 'auto'],
+            description: 'Quality level for the generated image. Default: auto'
+          },
+          size: {
+            type: 'string',
+            enum: ['1024x1024', '1536x1024', '1024x1536', 'auto'],
+            description: 'Size of the generated image. Default: auto'
+          },
+        },
+        required: ['prompt'],
+      },
+    },
     // 🎨 Image Generation (OpenAI built-in tool via Responses API)
     {
       type: 'image_generation',

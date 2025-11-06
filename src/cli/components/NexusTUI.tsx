@@ -1339,16 +1339,17 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
   - Example: memory({ command: "create", path: "/memories/project_notes.md", file_text: "..." })
   - NOTE: ALWAYS check /memories at start of new sessions
 
-**image_generation** - Generate images using gpt-image-1 🎨
+**generate_image** - Generate images using OpenAI's gpt-image-1 🎨🔥
+  - 🔥 CROSS-PROVIDER MAGIC: Claude can generate images by delegating to OpenAI!
   - Use when: User asks to draw, create, generate, or edit images
-  - This is a built-in tool - you can call it from ANY model (gpt-5, gpt-4.1, etc.)
+  - Works from ANY model - Claude, GPT-5, GPT-4.1, all of them!
+  - Behind the scenes: Calls OpenAI's gpt-image-1 even when using Claude
   - Images automatically saved to .nexus/images/ directory with timestamps
-  - Supports progressive streaming with up to 3 partial images
-  - Example: When user says "draw a cat", just call the tool - it handles everything
-  - Settings: moderation='low', quality='auto', size='auto', format='png'
-  - The tool will return a file path, NOT base64 spam
-  - Use terms like "draw" or "edit" in prompts for best results
-  - You can do multi-turn editing by referencing previous images
+  - Example: generate_image({ prompt: "A cyberpunk cat wearing sunglasses" })
+  - Optional params: quality ('low'|'medium'|'high'|'auto'), size ('1024x1024'|'1536x1024'|'1024x1536'|'auto')
+  - The tool returns a file path - user can open the image
+  - Use detailed, specific prompts for best results
+  - Pro tip: Describe style, colors, composition, lighting, mood in your prompt
 
 ${mcpManager?.isReady() ? `
 ## 🧠 JETBRAINS INTELLIGENCE TOOLS (PSI-powered, not regex!)
@@ -1525,8 +1526,72 @@ Now help the user build some cool shit.`;
           try {
             let result;
 
+            // 🔥 CROSS-PROVIDER DELEGATION: Claude -> OpenAI Image Generation
+            if (toolName === 'generate_image') {
+              console.log('\n🔥 Cross-provider delegation: Claude -> OpenAI gpt-image-1\n');
+
+              try {
+                // Call OpenAI image generation API directly
+                const OpenAI = require('openai');
+                const openai = new OpenAI({
+                  apiKey: process.env.OPENAI_API_KEY,
+                });
+
+                const prompt = toolArgs.prompt || '';
+                const quality = toolArgs.quality || 'auto';
+                const size = toolArgs.size || 'auto';
+
+                console.log(`🎨 Generating image: "${prompt.substring(0, 60)}..."\n`);
+
+                // Generate image using OpenAI API
+                const response = await openai.images.generate({
+                  model: 'gpt-image-1',
+                  prompt: prompt,
+                  quality: quality,
+                  size: size,
+                  moderation: 'low',
+                  output_format: 'png',
+                  response_format: 'b64_json', // Always get base64 for gpt-image-1
+                });
+
+                // Extract base64 image
+                const imageBase64 = response.data[0]?.b64_json;
+
+                if (!imageBase64) {
+                  throw new Error('No image data received from OpenAI');
+                }
+
+                // Save image to .nexus/images/
+                const fs = require('fs');
+                const path = require('path');
+                const imagesDir = path.join(fileTools.getWorkingDirectory(), '.nexus', 'images');
+                if (!fs.existsSync(imagesDir)) {
+                  fs.mkdirSync(imagesDir, { recursive: true });
+                }
+
+                const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
+                const filename = `nexus-image-${timestamp}.png`;
+                const filepath = path.join(imagesDir, filename);
+
+                const imageBuffer = Buffer.from(imageBase64, 'base64');
+                fs.writeFileSync(filepath, imageBuffer);
+
+                console.log(`✅ Image generated and saved: ${filepath}\n`);
+
+                result = {
+                  success: true,
+                  data: `Image successfully generated and saved!\n\nPath: ${filepath}\nFilename: ${filename}\n\n🎨 Cross-provider magic: Claude delegated to OpenAI gpt-image-1`
+                };
+              } catch (imgError: any) {
+                console.error(`\n❌ Image generation failed: ${imgError.message}\n`);
+                result = {
+                  success: false,
+                  error: `Failed to generate image: ${imgError.message}. Make sure you have OPENAI_API_KEY configured.`
+                };
+              }
+            }
             // Handle MCP (JetBrains) tools
-            if (toolName?.startsWith('context_') && mcpManager?.isReady()) {
+            else if (toolName?.startsWith('context_') && mcpManager?.isReady()) {
               const mcpClient = mcpManager.getClient();
               const mcpResult = await mcpClient.callTool(toolName, toolArgs);
               result = {
