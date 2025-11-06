@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 /**
- * NEXUS TUI - Main Entry Point
- * Full Ink-based terminal UI - Actually works! 🔥
+ * NEXUS CLI - Main Entry Point
+ *
+ * Supports two modes:
+ * 1. One-shot mode: nexus "your prompt here" or cat file.txt | nexus
+ * 2. Interactive TUI: nexus (full Ink-based terminal UI)
  */
 
 import { config as dotenvConfig } from 'dotenv';
@@ -23,7 +26,111 @@ import { IntelligentCommandHandler } from '../core/intelligence/intelligent-comm
 // Load environment variables
 dotenvConfig();
 
+/**
+ * One-shot CLI mode - execute a single prompt and exit
+ */
+async function oneShotMode(prompt: string) {
+  // Validate API keys
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const googleKey = process.env.GOOGLE_API_KEY;
+  const ollamaHost = process.env.OLLAMA_HOST;
+
+  if (!anthropicKey && !ollamaHost && !openaiKey && !googleKey) {
+    console.error('❌ Missing API keys. Set at least one: ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, or OLLAMA_HOST');
+    process.exit(1);
+  }
+
+  // Initialize minimal systems for one-shot mode
+  const modelManager = new UnifiedModelManager(
+    anthropicKey,
+    openaiKey,
+    googleKey,
+    ollamaHost
+  );
+
+  // Initialize MCP Server with tools
+  const fileTools = new FileTools(process.cwd());
+  const webTools = new WebTools();
+  const memoryTool = new MemoryTool(process.cwd());
+
+  const mcpServer = new MCPServer();
+  registerFileTools(mcpServer, fileTools);
+  registerWebTools(mcpServer, webTools);
+
+  // Get tool definitions
+  const toolDefinitions = [
+    ...getFileToolsDefinitions(),
+    ...getWebToolsDefinitions(),
+  ];
+
+  try {
+    // Stream the response
+    const stream = modelManager.streamMessage(
+      [{ role: 'user', content: prompt }],
+      {
+        systemPrompt: 'You are Nexus, a helpful AI coding assistant. Be concise and direct in CLI mode.',
+        tools: toolDefinitions,
+      }
+    );
+
+    let hasOutput = false;
+    for await (const chunk of stream) {
+      if (chunk.type === 'text' && chunk.content) {
+        process.stdout.write(chunk.content);
+        hasOutput = true;
+      } else if (chunk.type === 'thinking' && chunk.content) {
+        // Show thinking in one-shot mode too
+        process.stderr.write(chunk.content);
+      } else if (chunk.type === 'done') {
+        if (hasOutput) {
+          process.stdout.write('\n');
+        }
+      }
+    }
+
+    process.exit(0);
+  } catch (error: any) {
+    console.error('\n❌ Error:', error.message);
+    process.exit(1);
+  }
+}
+
+/**
+ * Read from stdin (for piping support)
+ */
+async function readStdin(): Promise<string> {
+  return new Promise((resolve) => {
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => {
+      data += chunk;
+    });
+    process.stdin.on('end', () => {
+      resolve(data.trim());
+    });
+  });
+}
+
 async function main() {
+  // Check for CLI arguments (one-shot mode)
+  const args = process.argv.slice(2);
+
+  if (args.length > 0) {
+    // One-shot mode with arguments
+    const prompt = args.join(' ');
+    return oneShotMode(prompt);
+  }
+
+  // Check if stdin has data (piping mode)
+  if (!process.stdin.isTTY) {
+    const stdinData = await readStdin();
+    if (stdinData) {
+      return oneShotMode(stdinData);
+    }
+  }
+
+  // No arguments and no stdin - boot full TUI
   // Validate API keys
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
