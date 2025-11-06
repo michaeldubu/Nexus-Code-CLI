@@ -135,6 +135,7 @@ export async function* streamMultiModelMessage(
 
           let fullContent = '';
           let fullThinking = '';
+          const toolCalls: any[] = [];
 
           for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt, tools })) {
             if (chunk.type === 'text') {
@@ -156,6 +157,7 @@ export async function* streamMultiModelMessage(
                 isThinking: true,
               };
             } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+              toolCalls.push(chunk.toolCall);
               yield {
                 type: 'tool_call',
                 modelId,
@@ -173,6 +175,7 @@ export async function* streamMultiModelMessage(
               role: 'assistant',
               content: fullContent,
               thinking: fullThinking || undefined,
+              toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
               model: modelName,
               agent: agentEmojis || undefined,
               timestamp: new Date().toISOString(),
@@ -205,6 +208,7 @@ export async function* streamMultiModelMessage(
 
           let fullContent = '';
           let fullThinking = '';
+          const toolCalls: any[] = [];
 
           for await (const chunk of modelManager.streamMessage(workingHistory, { systemPrompt: enhancedPrompt, tools })) {
             if (chunk.type === 'text') {
@@ -226,6 +230,7 @@ export async function* streamMultiModelMessage(
                 isThinking: true,
               };
             } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+              toolCalls.push(chunk.toolCall);
               yield {
                 type: 'tool_call',
                 modelId,
@@ -239,6 +244,7 @@ export async function* streamMultiModelMessage(
             role: 'assistant' as const,
             content: fullContent,
             thinking: fullThinking || undefined,
+            toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
             model: modelName,
             agent: agentEmojis || undefined,
             timestamp: new Date().toISOString(),
@@ -281,6 +287,7 @@ export async function* streamMultiModelMessage(
 
           let fullContent = '';
           let fullThinking = '';
+          const toolCalls: any[] = [];
 
           for await (const chunk of modelManager.streamMessage(conversationHistory, { systemPrompt: enhancedPrompt, tools })) {
             if (chunk.type === 'text') {
@@ -302,6 +309,7 @@ export async function* streamMultiModelMessage(
                 isThinking: true,
               };
             } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+              toolCalls.push(chunk.toolCall);
               yield {
                 type: 'tool_call',
                 modelId,
@@ -319,6 +327,7 @@ export async function* streamMultiModelMessage(
               role: 'assistant',
               content: fullContent,
               thinking: fullThinking || undefined,
+              toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
               model: modelName,
               agent: agentEmojis || undefined,
               timestamp: new Date().toISOString(),

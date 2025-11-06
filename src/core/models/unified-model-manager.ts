@@ -795,13 +795,37 @@ export class UnifiedModelManager {
           content: toAnthropicContent(m.content),
         };
 
-        // CRITICAL: Preserve thinking blocks during tool use loops
-        // When passing tool results back, we must include the complete unmodified thinking blocks
-        if (m.role === 'assistant' && m.thinking) {
-          baseMessage.content = [
-            { type: 'thinking', thinking: m.thinking },
-            ...Array.isArray(baseMessage.content) ? baseMessage.content : [{ type: 'text', text: baseMessage.content }]
-          ];
+        // CRITICAL: Preserve thinking blocks AND tool_use blocks during tool use loops
+        // When passing tool results back, we must include the complete unmodified thinking and tool blocks
+        if (m.role === 'assistant' && (m.thinking || m.toolCalls)) {
+          const contentBlocks: any[] = [];
+
+          // Add thinking block if present
+          if (m.thinking) {
+            contentBlocks.push({ type: 'thinking', thinking: m.thinking });
+          }
+
+          // Add text content if present
+          const textContent = toAnthropicContent(m.content);
+          if (Array.isArray(textContent)) {
+            contentBlocks.push(...textContent);
+          } else if (textContent) {
+            contentBlocks.push({ type: 'text', text: textContent });
+          }
+
+          // Add tool_use blocks if present
+          if (m.toolCalls && m.toolCalls.length > 0) {
+            for (const toolCall of m.toolCalls) {
+              contentBlocks.push({
+                type: 'tool_use',
+                id: toolCall.id,
+                name: toolCall.function?.name || '',
+                input: JSON.parse(toolCall.function?.arguments || '{}'),
+              });
+            }
+          }
+
+          baseMessage.content = contentBlocks;
         }
 
         return baseMessage;
@@ -1148,13 +1172,37 @@ export class UnifiedModelManager {
           content: toAnthropicContent(m.content),
         };
 
-        // CRITICAL: Preserve thinking blocks during tool use loops
-        // When passing tool results back, we must include the complete unmodified thinking blocks
-        if (m.role === 'assistant' && m.thinking) {
-          baseMessage.content = [
-            { type: 'thinking', thinking: m.thinking },
-            ...Array.isArray(baseMessage.content) ? baseMessage.content : [{ type: 'text', text: baseMessage.content }]
-          ];
+        // CRITICAL: Preserve thinking blocks AND tool_use blocks during tool use loops
+        // When passing tool results back, we must include the complete unmodified thinking and tool blocks
+        if (m.role === 'assistant' && (m.thinking || m.toolCalls)) {
+          const contentBlocks: any[] = [];
+
+          // Add thinking block if present
+          if (m.thinking) {
+            contentBlocks.push({ type: 'thinking', thinking: m.thinking });
+          }
+
+          // Add text content if present
+          const textContent = toAnthropicContent(m.content);
+          if (Array.isArray(textContent)) {
+            contentBlocks.push(...textContent);
+          } else if (textContent) {
+            contentBlocks.push({ type: 'text', text: textContent });
+          }
+
+          // Add tool_use blocks if present
+          if (m.toolCalls && m.toolCalls.length > 0) {
+            for (const toolCall of m.toolCalls) {
+              contentBlocks.push({
+                type: 'tool_use',
+                id: toolCall.id,
+                name: toolCall.function?.name || '',
+                input: JSON.parse(toolCall.function?.arguments || '{}'),
+              });
+            }
+          }
+
+          baseMessage.content = contentBlocks;
         }
 
         return baseMessage;
