@@ -20,6 +20,7 @@ import { MCPServer } from '../core/mcp/client.js';
 import { registerFileTools, getFileToolsDefinitions } from '../core/mcp/file-tools-mcp.js';
 import { registerWebTools, getWebToolsDefinitions } from '../core/mcp/web-tools-mcp.js';
 import { getMCPManager } from '../core/mcp/mcp-manager.js';
+import { NexusAgentFactory } from '../core/agents/index.js';
 
 // Load environment variables
 dotenvConfig();
@@ -130,6 +131,12 @@ async function main() {
 
   // 🧠 Intelligence will initialize AFTER TUI mounts (truly non-blocking!)
 
+  // Initialize Agent SDK Factory (optional - only if ANTHROPIC_API_KEY is set)
+  let agentFactory: NexusAgentFactory | undefined;
+  if (anthropicKey) {
+    agentFactory = new NexusAgentFactory(fileTools, webTools, memoryTool);
+  }
+
   // Get tool definitions for passing to AI models
   const toolDefinitions = [
     ...getFileToolsDefinitions(),
@@ -225,6 +232,7 @@ async function main() {
       mcpManager,
       toolDefinitions,
       workspaceRoot: process.cwd(), // Pass workspace root for intelligence init
+      agentFactory, // Agent SDK Factory (optional)
     }),
     {
       exitOnCtrlC: false, // Disable Ink's automatic exit
