@@ -76,3 +76,4 @@ package-lock.json
 replace.py
 /src/core/utils/claude-code-jetbrains-plugin
 /src/core/utils/claude-code-jetbrains-plugin
+claude-api-docs-uptodate.md
