@@ -1,19 +1,8 @@
 #!/usr/bin/env python3
 """
 NEXUS CODE TUI - Terminal User Interface
-The most advanced AI development environment ever created!
 
-Revolutionary Features:
-- Multi-pane intelligent interface 
-- Real-time AI collaboration
-- Hot reload development server
-- Live preview capabilities
-- Immersive agent orchestration
-- Dynamic tool discovery
-- Responsive design (Termux optimized)
-- Revolutionary visual experience
-
-SAAAM LLC - Revolutionizing AI Development
+SAAAM LLC - Innovating AI Development
 """
 
 import asyncio
@@ -69,7 +58,7 @@ from nexus_code import (
 
 
 class NexusCodeTUI(App):
-    """Revolutionary TUI for NEXUS CODE AI Development Platform"""
+    """TUI for NEXUS CODE AI Development Platform"""
     
     CSS = """
     /* NEXUS CODE Revolutionary Styling */
@@ -221,7 +210,7 @@ class NexusCodeTUI(App):
         ("shift+tab", "focus_previous", "Previous Widget"),
     ]
     
-    TITLE = "🚀 NEXUS CODE - Revolutionary AI Development Platform"
+    TITLE = "NEXUS CODE - Development Platform"
     SUB_TITLE = "SAAAM Intelligence - Leading the AI Revolution"
     
     # Reactive variables for live updates
@@ -262,57 +251,57 @@ class NexusCodeTUI(App):
         """Compose the revolutionary TUI interface"""
         
         # Header with dynamic branding
-        header_content = f"🚀 NEXUS CODE v2.0 | SAAAM Intelligence | {datetime.now().strftime('%H:%M:%S')}"
+        header_content = f"NEXUS CODE | SAAAM Intelligence | {datetime.now().strftime('%H:%M:%S')}"
         yield Header(show_clock=True, name="nexus_header", classes="nexus-header")
         
         with Container(id="main_container"):
             with Horizontal():
                 # Left Sidebar - Project & Agent Management
                 with Vertical(classes="nexus-sidebar", id="sidebar"):
-                    yield Static("🎯 PROJECT CONTROL", classes="nexus-status")
-                    yield Button("📂 New Project", id="btn_new_project", classes="nexus-button")
-                    yield Button("📁 Open Project", id="btn_open_project", classes="nexus-button")
-                    yield Button("💾 Save Project", id="btn_save_project", classes="nexus-button")
+                    yield Static("PROJECT CONTROL", classes="nexus-status")
+                    yield Button("New Project", id="btn_new_project", classes="nexus-button")
+                    yield Button("Open Project", id="btn_open_project", classes="nexus-button")
+                    yield Button("Save Project", id="btn_save_project", classes="nexus-button")
                     
-                    yield Static("🤖 AGENT ORCHESTRATION", classes="nexus-status")
-                    yield Button("⚡ Activate All Agents", id="btn_activate_agents", classes="nexus-button")
-                    yield Button("🧠 Thinking Mode", id="btn_thinking_mode", classes="nexus-button")
-                    yield Button("🔄 Agent Handoff", id="btn_agent_handoff", classes="nexus-button")
+                    yield Static("AGENT ORCHESTRATION", classes="nexus-status")
+                    yield Button("Activate All Agents", id="btn_activate_agents", classes="nexus-button")
+                    yield Button("Thinking Mode", id="btn_thinking_mode", classes="nexus-button")
+                    yield Button("Agent Handoff", id="btn_agent_handoff", classes="nexus-button")
                     
-                    yield Static("🛠️ MCP SERVERS", classes="nexus-status")
-                    yield Button("🔌 Connect Servers", id="btn_connect_mcp", classes="nexus-button")
-                    yield Button("🔍 Discover Tools", id="btn_discover_tools", classes="nexus-button")
+                    yield Static("MCP SERVERS", classes="nexus-status")
+                    yield Button("Connect Servers", id="btn_connect_mcp", classes="nexus-button")
+                    yield Button("Discover Tools", id="btn_discover_tools", classes="nexus-button")
                     
-                    yield Static("⚡ DEVELOPMENT", classes="nexus-status")
-                    yield Button("🔥 Hot Reload", id="btn_hot_reload", classes="nexus-button")
-                    yield Button("👁️ Live Preview", id="btn_live_preview", classes="nexus-button")
-                    yield Button("🚀 Deploy", id="btn_deploy", classes="nexus-button")
+                    yield Static("DEVELOPMENT", classes="nexus-status")
+                    yield Button("Hot Reload", id="btn_hot_reload", classes="nexus-button")
+                    yield Button("Live Preview", id="btn_live_preview", classes="nexus-button")
+                    yield Button("Deploy", id="btn_deploy", classes="nexus-button")
                 
                 # Main Content Area
                 with Vertical(classes="nexus-main", id="main_area"):
                     with TabbedContent(initial="code"):
                         # Code Editor Tab
-                        with TabPane("💻 Code Editor", id="code"):
+                        with TabPane("Code Editor", id="code"):
                             with Vertical():
                                 yield TextArea(
-                                    placeholder="🚀 NEXUS CODE Editor - Where AI Revolution Begins!",
+                                    placeholder="NEXUS CODE!",
                                     id="code_editor",
                                     classes="nexus-input"
                                 )
                         
                         # AI Collaboration Tab  
-                        with TabPane("🤖 AI Collaboration", id="ai_collab"):
+                        with TabPane("AI Collaboration", id="ai_collab"):
                             with Vertical():
-                                yield Static("🧠 Multi-Agent AI Collaboration", classes="nexus-status")
+                                yield Static("Multi-Agent AI Collaboration", classes="nexus-status")
                                 yield RichLog(id="ai_chat", classes="nexus-output")
                                 yield Input(
-                                    placeholder="🗣️ Chat with AI agents...",
+                                    placeholder="Chat with agents...",
                                     id="ai_input",
                                     classes="nexus-input"
                                 )
                         
                         # Project Files Tab
-                        with TabPane("📁 Files", id="files"):
+                        with TabPane("Files", id="files"):
                             yield DirectoryTree(
                                 "/home/claude",
                                 id="file_tree",
@@ -320,13 +309,13 @@ class NexusCodeTUI(App):
                             )
                         
                         # Live Preview Tab
-                        with TabPane("👁️ Live Preview", id="preview"):
-                            yield Static("🌐 Live Preview Server", classes="live-preview")
+                        with TabPane("Live Preview", id="preview"):
+                            yield Static("Live Preview Server", classes="live-preview")
                             yield RichLog(id="preview_log", classes="nexus-output")
                         
                         # Agent Dashboard Tab
-                        with TabPane("🎛️ Agents", id="agents"):
-                            yield Static("🤖 Agent Dashboard", classes="nexus-status")
+                        with TabPane("Agents", id="agents"):
+                            yield Static("Agent Dashboard", classes="nexus-status")
                             with Horizontal():
                                 yield Static("ARCHITECT", classes="agent-active", id="agent_architect")
                                 yield Static("DEVELOPER", classes="agent-idle", id="agent_developer") 
@@ -334,13 +323,13 @@ class NexusCodeTUI(App):
                             yield RichLog(id="agent_logs", classes="nexus-output")
                         
                         # MCP Tools Tab
-                        with TabPane("🔧 MCP Tools", id="mcp_tools"):
-                            yield Static("🛠️ Model Context Protocol Tools", classes="nexus-status")
+                        with TabPane("MCP Tools", id="mcp_tools"):
+                            yield Static("Model Context Protocol Tools", classes="nexus-status")
                             yield DataTable(id="mcp_table", classes="mcp-server")
                         
                         # Performance Tab
-                        with TabPane("📊 Performance", id="performance"):
-                            yield Static("⚡ System Performance", classes="nexus-status")
+                        with TabPane("Performance", id="performance"):
+                            yield Static("System Performance", classes="nexus-status")
                             yield Sparkline(id="cpu_sparkline", classes="ai-model-indicator")
                             yield Sparkline(id="memory_sparkline", classes="hot-reload-indicator")
                             yield RichLog(id="performance_log", classes="nexus-output")
@@ -359,7 +348,7 @@ class NexusCodeTUI(App):
     
     async def on_mount(self) -> None:
         """Initialize the revolutionary NEXUS CODE environment"""
-        self.log("🚀 NEXUS CODE TUI Initializing...")
+        self.log("NEXUS Initializing...")
         
         # Initialize core systems
         await self._initialize_systems()
@@ -373,7 +362,7 @@ class NexusCodeTUI(App):
         # Welcome message
         self.display_welcome_message()
         
-        self.log("✅ NEXUS CODE Ready for Revolutionary AI Development!")
+        self.log("NEXUS CODE Ready!")
     
     async def _initialize_systems(self):
         """Initialize all NEXUS CODE systems"""
@@ -382,16 +371,16 @@ class NexusCodeTUI(App):
             await self.mcp_manager.initialize()
             
             # Setup AI clients
-            self.log("🤖 AI Providers initialized")
+            self.log("AI Providers initialized")
             
             # Initialize agent orchestrator
-            self.log("🧠 Agent Orchestrator ready")
+            self.log("Agent Orchestrator ready")
             
             # Setup project manager
-            self.log("📁 Project Manager initialized")
+            self.log("Project Manager initialized")
             
         except Exception as e:
-            self.log(f"❌ Initialization error: {e}")
+            self.log(f"Initialization error: {e}")
             logger.error(f"TUI initialization failed: {e}")
     
     def _setup_live_updates(self):
@@ -424,7 +413,7 @@ class NexusCodeTUI(App):
         threading.Thread(target=monitor_performance, daemon=True).start()
     
     def display_welcome_message(self):
-        """Display revolutionary welcome message"""
+        """Display welcome message"""
         welcome_art = """
     ███╗   ██╗███████╗██╗  ██╗██╗   ██╗███████╗     ██████╗ ██████╗ ██████╗ ███████╗
     ████╗  ██║██╔════╝╚██╗██╔╝██║   ██║██╔════╝    ██╔════╝██╔═══██╗██╔══██╗██╔════╝
@@ -433,18 +422,7 @@ class NexusCodeTUI(App):
     ██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝███████║    ╚██████╗╚██████╔╝██████╔╝███████╗
     ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
     
-    🚀 REVOLUTIONARY AI DEVELOPMENT PLATFORM 🚀
-    ⚡ SAAAM Intelligence - Leading the AI Revolution ⚡
-    
-    🎯 Multi-Provider AI Integration (OpenAI • Anthropic • Gemini • Ollama)
-    🤖 Intelligent Agent Orchestration with Handoffs
-    🛠️ Model Context Protocol (MCP) Integration
-    🔥 Hot Reload Development Server
-    👁️ Live Preview Capabilities
-    📱 Mobile-First Design (Termux Ready)
-    ⚡ Real-Time Collaboration
-    🧠 Advanced Context Management
-    """
+   
         
         # Display in AI chat
         ai_chat = self.query_one("#ai_chat", RichLog)

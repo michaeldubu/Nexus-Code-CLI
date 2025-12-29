@@ -58,7 +58,7 @@ from nexus_code import (
 class ImageModel(Enum):
     """Supported image generation models"""
     DALLE_3 = "dall-e-3"
-    DALLE_2 = "dall-e-2"
+    GPT-IMAGE-1-5 = "gpt-image-1-5"
     FLUX_SCHNELL = "flux-schnell"
     FLUX_PRO = "flux-pro"
     FLUX_DEV = "flux-dev"
@@ -164,12 +164,12 @@ class RevolutionaryImageGenerator:
     def _initialize_clients(self):
         """Initialize image generation clients"""
         
-        # OpenAI DALL-E client
+        # OpenAI client
         if self.config.api_keys.get("OPENAI_API_KEY"):
             self.openai_client = openai.OpenAI(
                 api_key=self.config.api_keys["OPENAI_API_KEY"]
             )
-            logger.info("🎨 OpenAI DALL-E client initialized")
+            logger.info("🎨 OpenAI client initialized")
         
         # Replicate client for Flux and other models
         replicate_token = os.getenv("REPLICATE_API_TOKEN")
@@ -218,7 +218,7 @@ class RevolutionaryImageGenerator:
             raise
     
     async def _generate_with_openai(self, request: ImageGenerationRequest) -> ImageGenerationResult:
-        """Generate image using OpenAI DALL-E"""
+        """Generate image using OpenAI GPT-image-1.5"""
         
         if not self.openai_client:
             raise ValueError("OpenAI client not initialized")

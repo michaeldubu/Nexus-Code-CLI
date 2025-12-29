@@ -1,4 +1,4 @@
-package com.saaam.nexus.plugin.intelligence
+package nexus.saaamllc.plugin.intelligence
 
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.project.Project
@@ -108,11 +108,11 @@ class ContextIntelligence(private val project: Project) {
         }
 
         // Build dependency graph
-        logger.info("🔗 Building dependency graph...")
+        logger.info("Building dependency graph...")
         buildDependencyGraph(nodes, edges, reverseEdges)
 
         // Calculate metrics
-        logger.info("📈 Calculating metrics...")
+        logger.info("Calculating metrics...")
         val languages = calculateLanguageDistribution(nodes)
         val hotSpots = findHotSpots(nodes.values.toList())
         val complexFiles = findComplexFiles(nodes.values.toList())
@@ -133,9 +133,9 @@ class ContextIntelligence(private val project: Project) {
         projectContext = context
 
         val duration = (System.currentTimeMillis() - startTime) / 1000.0
-        logger.info("✅ Context Intelligence initialized in ${String.format("%.2f", duration)}s")
-        logger.info("📊 ${nodes.size} files | ${languages.size} languages")
-        logger.info("🔥 ${hotSpots.size} hot spots | ${complexFiles.size} complex files")
+        logger.info("Context Intelligence initialized in ${String.format("%.2f", duration)}s")
+        logger.info("${nodes.size} files | ${languages.size} languages")
+        logger.info("${hotSpots.size} hot spots | ${complexFiles.size} complex files")
 
         context
     }
@@ -584,13 +584,13 @@ class ContextIntelligence(private val project: Project) {
         val context = projectContext ?: return "Context not initialized"
         
         return buildString {
-            appendLine("🧠 PROJECT CONTEXT SUMMARY")
+            appendLine("PROJECT CONTEXT SUMMARY")
             appendLine("━━━━━━━━━━━━━━━━━━━━━━━━━━")
-            appendLine("📁 Root: ${context.rootPath}")
-            appendLine("📊 Files: ${context.graph.nodes.size}")
-            appendLine("🔧 Frameworks: ${context.frameworks.joinToString(", ").ifEmpty { "None" }}")
+            appendLine("Root: ${context.rootPath}")
+            appendLine("Files: ${context.graph.nodes.size}")
+            appendLine("Frameworks: ${context.frameworks.joinToString(", ").ifEmpty { "None" }}")
             appendLine()
-            appendLine("📊 Languages:")
+            appendLine("Languages:")
             context.languages.entries
                 .sortedByDescending { it.value }
                 .forEach { (lang, count) ->
@@ -600,7 +600,7 @@ class ContextIntelligence(private val project: Project) {
             
             if (context.complexFiles.isNotEmpty()) {
                 appendLine()
-                appendLine("⚠️  Complex Files (top 5):")
+                appendLine("Complex Files (top 5):")
                 context.complexFiles.take(5).forEach { node ->
                     appendLine("  ${node.relativePath} (complexity: ${String.format("%.1f", node.complexity)})")
                 }
