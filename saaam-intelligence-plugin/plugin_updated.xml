@@ -1,0 +1,85 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <!-- Unique identifier of the plugin. -->
+    <id>com.saaam.nexus.plugin</id>
+
+    <!-- Public plugin name (displayed everywhere). -->
+    <name>NEXUS Code</name>
+
+    <!-- Vendor info -->
+    <vendor email="code@saaam.dev" url="https://github.com/SAAAM-LLC">SAAAM LLC</vendor>
+
+    <!-- Product and plugin compatibility requirements. -->
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.lang</depends>
+    <depends>com.intellij.java</depends>
+
+    <!-- Extension points defined by the plugin. -->
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- MCP Service -->
+        <projectService serviceImplementation="com.saaam.nexus.plugin.services.MCPService"/>
+
+        <!-- Context Intelligence Service -->
+        <projectService serviceImplementation="com.saaam.nexus.plugin.services.NexusIntelligenceService"/>
+
+        <!-- Startup activities -->
+        <postStartupActivity implementation="com.saaam.nexus.plugin.startup.PostStartupActivity"/>
+        <postStartupActivity implementation="com.saaam.nexus.plugin.services.NexusIntelligenceStartup"/>
+
+        <!-- Settings configurable -->
+        <projectConfigurable
+            parentId="tools"
+            instance="com.saaam.nexus.plugin.settings.PluginSettingsConfigurable"
+            id="com.saaam.nexus.plugin.settings.PluginSettingsConfigurable"
+            displayName="NEXUS Code"/>
+    </extensions>
+
+    <!-- Actions -->
+    <actions>
+        <action
+            id="com.saaam.nexus.plugin.actions.OpenNexusInTerminal"
+            class="com.saaam.nexus.plugin.actions.OpenNexusInTerminalAction"
+            text="Open NEXUS in Terminal"
+            description="Opens NEXUS Code CLI in terminal"
+            icon="AllIcons.Actions.Execute">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+
+        <!-- New: Context Intelligence Actions -->
+        <action
+            id="com.saaam.nexus.plugin.actions.ShowContextSummary"
+            class="com.saaam.nexus.plugin.actions.ShowContextSummaryAction"
+            text="Show Project Context"
+            description="Shows intelligent project context summary"
+            icon="AllIcons.Actions.GroupBy">
+            <add-to-group group-id="ToolsMenu" anchor="after" relative-to-action="com.saaam.nexus.plugin.actions.OpenNexusInTerminal"/>
+        </action>
+
+        <action
+            id="com.saaam.nexus.plugin.actions.FindRelevantFiles"
+            class="com.saaam.nexus.plugin.actions.FindRelevantFilesAction"
+            text="Find Relevant Files..."
+            description="Intelligently find files relevant to a query"
+            icon="AllIcons.Actions.Find">
+            <add-to-group group-id="ToolsMenu" anchor="after" relative-to-action="com.saaam.nexus.plugin.actions.ShowContextSummary"/>
+        </action>
+
+        <action
+            id="com.saaam.nexus.plugin.actions.AnalyzeCurrentFile"
+            class="com.saaam.nexus.plugin.actions.AnalyzeCurrentFileAction"
+            text="Analyze Current File"
+            description="Show detailed analysis of the current file"
+            icon="AllIcons.Actions.Profile">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
+
+        <action
+            id="com.saaam.nexus.plugin.actions.ShowComplexFiles"
+            class="com.saaam.nexus.plugin.actions.ShowComplexFilesAction"
+            text="Show Complex Files"
+            description="Show files with high complexity that may need refactoring"
+            icon="AllIcons.General.Warning">
+            <add-to-group group-id="ToolsMenu" anchor="after" relative-to-action="com.saaam.nexus.plugin.actions.FindRelevantFiles"/>
+        </action>
+    </actions>
+</idea-plugin>
