@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <!-- Unique identifier of the plugin. -->
+    <id>nexus.saaamllc.plugin</id>
+    <!-- Public plugin name (displayed everywhere). -->
+    <name>NEXUS Code</name>
+    <!-- Vendor info -->
+    <vendor email="code@saaam.dev" url="https://github.com/SAAAM-LLC/jetbrains-nexus-plugin">SAAAM LLC</vendor>
+    <!-- Product and plugin compatibility requirements. -->
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.lang</depends>
+    <depends>com.intellij.java</depends>
+    <depends>org.jetbrains.kotlin</depends>
+    <!-- Extension points defined by the plugin. -->
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Project-level services -->
+        <projectService serviceImplementation="nexus.saaamllc.plugin.services.MCPService"/>
+        <projectService serviceImplementation="nexus.saaamllc.plugin.services.NexusIntelligenceService"/>
+        <!-- Startup activity - auto-starts MCP server and intelligence -->
+        <postStartupActivity implementation="nexus.saaamllc.plugin.startup.PostStartupActivity"/>
+        <!-- Notification group -->
+        <notificationGroup id="NEXUS Code" displayType="BALLOON"/>
+    </extensions>
+    <!-- Actions -->
+    <actions>
+        <action id="nexus.saaamllc.plugin.actions.OpenNexusInTerminal" class="nexus.saaamllc.plugin.actions.OpenNexusInTerminalAction" text="Open NEXUS in Terminal" description="Opens NEXUS Code CLI in terminal" icon="AllIcons.Actions.Execute">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>

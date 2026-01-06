@@ -1,0 +1,1321 @@
+#!/usr/bin/env python3
+"""
+NEXUS CODE - Revolutionary AI Development Platform
+The most advanced multi-AI development environment ever created.
+
+Features:
+- Multi-provider AI support (OpenAI Responses API, Anthropic Messages API, Gemini API, Ollama)
+- MCP integration for universal tool discovery and execution
+- Agent orchestration with intelligent handoffs
+- Real-time collaboration between AI models
+- Advanced context management and caching
+- Project templating and hot reload
+- Image generation and multimodal capabilities
+- Batch processing and optimization
+- Terminal-based TUI interface
+- Mobile-first design (Termux ready)
+
+Created by SAAAM LLC - Leading the revolution in AI development.
+"""
+
+import asyncio
+import json
+import os
+import sys
+import time
+import logging
+from datetime import datetime
+from typing import Dict, List, Any, Optional, Union, AsyncGenerator
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+import traceback
+import subprocess
+import threading
+import queue
+import tempfile
+import base64
+import hashlib
+from urllib.parse import urljoin
+import websockets
+import aiohttp
+import aiofiles
+import rich
+from rich.console import Console
+from rich.panel import Panel
+from rich.layout import Layout
+from rich.live import Live
+from rich.table import Table
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskID
+from rich.syntax import Syntax
+from rich.text import Text
+from rich.tree import Tree
+from rich.prompt import Prompt, Confirm
+from rich.markdown import Markdown
+import textual
+from textual.app import App, ComposeResult
+from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
+from textual.widgets import (
+    Header, Footer, Button, Input, TextArea, Static, Tree as TextualTree,
+    TabbedContent, TabPane, ProgressBar, Select, Checkbox, RadioButton, RadioSet,
+    Log, RichLog, LoadingIndicator, Sparkline, PlotExt, DataTable, DirectoryTree
+)
+from textual.reactive import reactive
+from textual.message import Message
+from textual.events import Key
+from textual.binding import Binding
+from textual.worker import Worker, get_current_worker
+from textual.screen import ModalScreen
+import pydantic
+from pydantic import BaseModel, Field, validator
+import httpx
+import openai
+import anthropic
+import google.generativeai as gemini_ai
+import ollama
+import mcp
+from mcp.client.session import ClientSession
+from mcp.client.stdio import StdioServerParameters
+from mcp.client.sse import SSEServerParameters
+import sse_starlette
+import uvicorn
+from fastapi import FastAPI, WebSocket, HTTPException, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, JSONResponse
+import torch
+import numpy as np
+import PIL.Image
+import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from tenacity import retry, stop_after_attempt, wait_exponential
+import jwt
+import bcrypt
+import redis
+import psutil
+import docker
+import yaml
+
+
+# Configure advanced logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(name)s | %(levelname)s | %(message)s',
+    handlers=[
+        logging.FileHandler('nexus_code.log'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger("NexusCode")
+
+# Global console for rich output
+console = Console()
+
+
+class AIProvider(Enum):
+    """Supported AI providers in NEXUS CODE"""
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    GEMINI = "gemini"
+    OLLAMA = "ollama"
+    
+    
+class ModelCapabilities(Enum):
+    """AI model capabilities"""
+    TEXT_GENERATION = "text_generation"
+    CODE_GENERATION = "code_generation"
+    IMAGE_GENERATION = "image_generation"
+    IMAGE_ANALYSIS = "image_analysis"
+    AUDIO_GENERATION = "audio_generation"
+    VIDEO_GENERATION = "video_generation"
+    TOOL_CALLING = "tool_calling"
+    REASONING = "reasoning"
+    THINKING = "thinking"
+    MULTIMODAL = "multimodal"
+    LONG_CONTEXT = "long_context"
+    REAL_TIME = "real_time"
+
+
+class AgentRole(Enum):
+    """Agent roles in the NEXUS CODE ecosystem"""
+    ARCHITECT = "architect"
+    DEVELOPER = "developer"
+    REVIEWER = "reviewer"
+    TESTER = "tester"
+    OPTIMIZER = "optimizer"
+    SECURITY = "security"
+    DOCUMENTATION = "documentation"
+    RESEARCH = "research"
+    CREATIVE = "creative"
+    ORCHESTRATOR = "orchestrator"
+
+
+class TaskPriority(Enum):
+    """Task priority levels"""
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    BACKGROUND = "background"
+
+
+@dataclass
+class AIModel:
+    """AI model configuration"""
+    provider: AIProvider
+    name: str
+    capabilities: List[ModelCapabilities]
+    context_length: int
+    cost_per_token: float = 0.0
+    supports_streaming: bool = True
+    supports_tools: bool = False
+    supports_vision: bool = False
+    supports_audio: bool = False
+    max_tokens: int = 4096
+    temperature_range: tuple = (0.0, 2.0)
+    beta_features: List[str] = field(default_factory=list)
+
+
+@dataclass 
+class MCPServer:
+    """MCP server configuration"""
+    name: str
+    description: str
+    command: str
+    args: List[str]
+    transport: str = "stdio"  # stdio, http, websocket
+    url: Optional[str] = None
+    tools: List[str] = field(default_factory=list)
+    enabled: bool = True
+    auto_discover: bool = True
+    
+
+@dataclass
+class Agent:
+    """AI agent configuration"""
+    id: str
+    role: AgentRole
+    model: AIModel
+    system_prompt: str
+    tools: List[str] = field(default_factory=list)
+    mcp_servers: List[str] = field(default_factory=list)
+    temperature: float = 0.7
+    max_iterations: int = 10
+    handoff_conditions: List[str] = field(default_factory=list)
+    memory_enabled: bool = True
+    thinking_enabled: bool = False
+    
+
+@dataclass
+class Task:
+    """Task in the development workflow"""
+    id: str
+    description: str
+    priority: TaskPriority
+    assigned_agent: Optional[str] = None
+    status: str = "pending"
+    dependencies: List[str] = field(default_factory=list)
+    artifacts: List[str] = field(default_factory=list)
+    created_at: datetime = field(default_factory=datetime.now)
+    completed_at: Optional[datetime] = None
+    
+
+@dataclass
+class Project:
+    """Development project"""
+    name: str
+    description: str
+    template: str
+    languages: List[str]
+    frameworks: List[str]
+    agents: List[str] = field(default_factory=list)
+    tasks: List[str] = field(default_factory=list)
+    files: List[str] = field(default_factory=list)
+    created_at: datetime = field(default_factory=datetime.now)
+    
+
+class NexusCodeConfig:
+    """NEXUS CODE configuration management"""
+    
+    def __init__(self):
+        self.config_path = Path.home() / ".nexus_code"
+        self.config_path.mkdir(exist_ok=True)
+        
+        # Default AI models
+        self.models = {
+            # OpenAI Models with Responses API
+            "gpt-4o": AIModel(
+                provider=AIProvider.OPENAI,
+                name="gpt-4o",
+                capabilities=[
+                    ModelCapabilities.TEXT_GENERATION,
+                    ModelCapabilities.CODE_GENERATION,
+                    ModelCapabilities.IMAGE_ANALYSIS,
+                    ModelCapabilities.TOOL_CALLING,
+                    ModelCapabilities.REASONING,
+                    ModelCapabilities.MULTIMODAL
+                ],
+                context_length=128000,
+                supports_tools=True,
+                supports_vision=True,
+                beta_features=["responses-api"]
+            ),
+            
+            # Anthropic Models with Messages API
+            "claude-sonnet-4": AIModel(
+                provider=AIProvider.ANTHROPIC,
+                name="claude-sonnet-4-20250514",
+                capabilities=[
+                    ModelCapabilities.TEXT_GENERATION,
+                    ModelCapabilities.CODE_GENERATION,
+                    ModelCapabilities.TOOL_CALLING,
+                    ModelCapabilities.REASONING,
+                    ModelCapabilities.THINKING,
+                    ModelCapabilities.LONG_CONTEXT
+                ],
+                context_length=1000000,
+                supports_tools=True,
+                beta_features=[
+                    "prompt-caching-2024-07-31",
+                    "token-efficient-tools-2025-02-19", 
+                    "context-management-2025-06-27"
+                ]
+            ),
+            
+            # Gemini Models
+            "gemini-3-pro": AIModel(
+                provider=AIProvider.GEMINI,
+                name="gemini-3.0-pro",
+                capabilities=[
+                    ModelCapabilities.TEXT_GENERATION,
+                    ModelCapabilities.CODE_GENERATION,
+                    ModelCapabilities.IMAGE_GENERATION,
+                    ModelCapabilities.IMAGE_ANALYSIS,
+                    ModelCapabilities.AUDIO_GENERATION,
+                    ModelCapabilities.TOOL_CALLING,
+                    ModelCapabilities.REASONING,
+                    ModelCapabilities.THINKING,
+                    ModelCapabilities.MULTIMODAL,
+                    ModelCapabilities.REAL_TIME
+                ],
+                context_length=1000000,
+                supports_tools=True,
+                supports_vision=True,
+                supports_audio=True
+            ),
+            
+            # Ollama Local Models
+            "qwen2.5-coder": AIModel(
+                provider=AIProvider.OLLAMA,
+                name="qwen2.5-coder:latest",
+                capabilities=[
+                    ModelCapabilities.TEXT_GENERATION,
+                    ModelCapabilities.CODE_GENERATION,
+                    ModelCapabilities.TOOL_CALLING
+                ],
+                context_length=32768,
+                supports_tools=True,
+                cost_per_token=0.0  # Local model
+            )
+        }
+        
+        # Default MCP servers
+        self.mcp_servers = {
+            "filesystem": MCPServer(
+                name="filesystem",
+                description="File system operations",
+                command="npx",
+                args=["-y", "@modelcontextprotocol/server-filesystem", "/home/claude"]
+            ),
+            "git": MCPServer(
+                name="git",
+                description="Git repository operations",
+                command="npx",
+                args=["-y", "@modelcontextprotocol/server-git"]
+            ),
+            "web_search": MCPServer(
+                name="web_search",
+                description="Web search capabilities",
+                command="uvx",
+                args=["duckduckgo-mcp-server"]
+            ),
+            "database": MCPServer(
+                name="database",
+                description="Database operations",
+                command="uvx",
+                args=["mcp-server-sqlite", "--db-path", "nexus_code.db"]
+            )
+        }
+        
+        # Default agents
+        self.agents = {
+            "architect": Agent(
+                id="architect",
+                role=AgentRole.ARCHITECT,
+                model=self.models["claude-sonnet-4"],
+                system_prompt="""You are the ARCHITECT agent in NEXUS CODE. You design system architecture, 
+                plan development workflows, and make high-level technical decisions. You think at the system level
+                and create comprehensive technical specifications.""",
+                tools=["filesystem", "git", "web_search"],
+                thinking_enabled=True
+            ),
+            "developer": Agent(
+                id="developer",
+                role=AgentRole.DEVELOPER,
+                model=self.models["qwen2.5-coder"],
+                system_prompt="""You are the DEVELOPER agent in NEXUS CODE. You write high-quality, production-ready
+                code based on specifications. You follow best practices and create efficient, maintainable solutions.""",
+                tools=["filesystem", "git", "database"]
+            ),
+            "reviewer": Agent(
+                id="reviewer",
+                role=AgentRole.REVIEWER,
+                model=self.models["gpt-4o"],
+                system_prompt="""You are the REVIEWER agent in NEXUS CODE. You review code for quality, security,
+                performance, and maintainability. You provide detailed feedback and suggestions for improvement.""",
+                tools=["filesystem", "git"]
+            )
+        }
+        
+        # API configurations
+        self.api_keys = {
+            "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY"),
+            "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY"),
+            "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY")
+        }
+        
+        self.load_config()
+    
+    def load_config(self):
+        """Load configuration from files"""
+        config_file = self.config_path / "config.json"
+        if config_file.exists():
+            with open(config_file, "r") as f:
+                config_data = json.load(f)
+                # Update configurations from file
+                
+    def save_config(self):
+        """Save configuration to files"""
+        config_file = self.config_path / "config.json"
+        config_data = {
+            "models": {k: v.__dict__ for k, v in self.models.items()},
+            "mcp_servers": {k: v.__dict__ for k, v in self.mcp_servers.items()},
+            "agents": {k: v.__dict__ for k, v in self.agents.items()}
+        }
+        with open(config_file, "w") as f:
+            json.dump(config_data, f, indent=2, default=str)
+
+
+class AIProviderClient:
+    """Universal AI provider client with latest APIs"""
+    
+    def __init__(self, config: NexusCodeConfig):
+        self.config = config
+        self.clients = {}
+        self._initialize_clients()
+        
+    def _initialize_clients(self):
+        """Initialize all AI provider clients"""
+        
+        # OpenAI with Responses API
+        if self.config.api_keys["OPENAI_API_KEY"]:
+            self.clients[AIProvider.OPENAI] = openai.OpenAI(
+                api_key=self.config.api_keys["OPENAI_API_KEY"]
+            )
+            
+        # Anthropic with Messages API
+        if self.config.api_keys["ANTHROPIC_API_KEY"]:
+            self.clients[AIProvider.ANTHROPIC] = anthropic.Anthropic(
+                api_key=self.config.api_keys["ANTHROPIC_API_KEY"]
+            )
+            
+        # Gemini with latest API
+        if self.config.api_keys["GEMINI_API_KEY"]:
+            gemini_ai.configure(api_key=self.config.api_keys["GEMINI_API_KEY"])
+            self.clients[AIProvider.GEMINI] = gemini_ai
+            
+        # Ollama local client
+        try:
+            self.clients[AIProvider.OLLAMA] = ollama.Client()
+        except Exception as e:
+            logger.warning(f"Could not connect to Ollama: {e}")
+    
+    async def generate_response(self, model: AIModel, messages: List[Dict], **kwargs) -> Dict:
+        """Generate response using the appropriate AI provider with latest APIs"""
+        
+        if model.provider == AIProvider.OPENAI:
+            return await self._openai_responses_api(model, messages, **kwargs)
+        elif model.provider == AIProvider.ANTHROPIC:
+            return await self._anthropic_messages_api(model, messages, **kwargs)
+        elif model.provider == AIProvider.GEMINI:
+            return await self._gemini_api(model, messages, **kwargs)
+        elif model.provider == AIProvider.OLLAMA:
+            return await self._ollama_api(model, messages, **kwargs)
+        else:
+            raise ValueError(f"Unsupported provider: {model.provider}")
+    
+    async def _openai_responses_api(self, model: AIModel, messages: List[Dict], **kwargs) -> Dict:
+        """Use OpenAI's new Responses API"""
+        client = self.clients[AIProvider.OPENAI]
+        
+        try:
+            # Convert messages to input format for Responses API
+            input_content = messages[-1]["content"] if messages else ""
+            
+            # Previous conversation context
+            previous_response_id = kwargs.get("previous_response_id")
+            
+            response = client.responses.create(
+                model=model.name,
+                input=input_content,
+                previous_response_id=previous_response_id,
+                max_tokens=kwargs.get("max_tokens", model.max_tokens),
+                temperature=kwargs.get("temperature", 0.7)
+            )
+            
+            return {
+                "id": response.id,
+                "content": response.output[0].content[0].text if response.output else "",
+                "usage": getattr(response, "usage", {}),
+                "provider": "openai"
+            }
+            
+        except Exception as e:
+            logger.error(f"OpenAI Responses API error: {e}")
+            raise
+    
+    async def _anthropic_messages_api(self, model: AIModel, messages: List[Dict], **kwargs) -> Dict:
+        """Use Anthropic's Messages API with latest beta features"""
+        client = self.clients[AIProvider.ANTHROPIC]
+        
+        try:
+            # Configure beta headers
+            extra_headers = {}
+            for beta_feature in model.beta_features:
+                extra_headers["anthropic-beta"] = beta_feature
+                
+            # Add context management if supported
+            if "context-management-2025-06-27" in model.beta_features:
+                extra_headers["anthropic-beta"] += ",context-management-2025-06-27"
+            
+            # Configure caching if large context
+            system_content = kwargs.get("system", "")
+            if len(system_content) > 10000:  # Enable caching for large contexts
+                system = [
+                    {"type": "text", "text": system_content, "cache_control": {"type": "ephemeral"}}
+                ]
+            else:
+                system = system_content
+            
+            response = client.messages.create(
+                model=model.name,
+                max_tokens=kwargs.get("max_tokens", model.max_tokens),
+                temperature=kwargs.get("temperature", 0.7),
+                system=system,
+                messages=messages,
+                extra_headers=extra_headers
+            )
+            return {
+                "id": response.id,
+                "content": response.content[0].text,
+                "usage": response.usage.__dict__,
+                "provider": "anthropic"
+            }
+            
+        except Exception as e:
+            logger.error(f"Anthropic Messages API error: {e}")
+            raise
+    
+    async def _gemini_api(self, model: AIModel, messages: List[Dict], **kwargs) -> Dict:
+        """Use Google's Gemini API with latest features"""
+        
+        try:
+            # Configure model
+            generation_config = {
+                "temperature": kwargs.get("temperature", 0.7),
+                "max_output_tokens": kwargs.get("max_tokens", model.max_tokens),
+            }
+            
+            # Initialize model
+            gemini_model = gemini_ai.GenerativeModel(
+                model_name=model.name,
+                generation_config=generation_config
+            )
+            
+            # Convert messages to Gemini format
+            gemini_messages = []
+            for message in messages:
+                if message["role"] == "user":
+                    gemini_messages.append(message["content"])
+                elif message["role"] == "assistant":
+                    # Add to conversation history
+                    pass
+            
+            # Generate response
+            response = gemini_model.generate_content(gemini_messages[-1])
+            
+            return {
+                "id": getattr(response, "id", "gemini-" + str(int(time.time()))),
+                "content": response.text,
+                "usage": {"input_tokens": 0, "output_tokens": 0},  # Gemini doesn't provide detailed usage
+                "provider": "gemini"
+            }
+            
+        except Exception as e:
+            logger.error(f"Gemini API error: {e}")
+            raise
+    
+    async def _ollama_api(self, model: AIModel, messages: List[Dict], **kwargs) -> Dict:
+        """Use Ollama for local models"""
+        client = self.clients[AIProvider.OLLAMA]
+        
+        try:
+            response = client.chat(
+                model=model.name,
+                messages=messages,
+                stream=False,
+                options={
+                    "temperature": kwargs.get("temperature", 0.7),
+                    "num_ctx": model.context_length,
+                    "num_predict": kwargs.get("max_tokens", model.max_tokens)
+                }
+            )
+            
+            return {
+                "id": f"ollama-{int(time.time())}",
+                "content": response["message"]["content"],
+                "usage": {"input_tokens": 0, "output_tokens": 0},
+                "provider": "ollama"
+            }
+            
+        except Exception as e:
+            logger.error(f"Ollama API error: {e}")
+            raise
+
+
+class MCPManager:
+    """Model Context Protocol integration manager"""
+    
+    def __init__(self, config: NexusCodeConfig):
+        self.config = config
+        self.servers = {}
+        self.sessions = {}
+        self.tools = {}
+        
+    async def initialize(self):
+        """Initialize all MCP servers"""
+        logger.info("Initializing MCP servers...")
+        
+        for name, server_config in self.config.mcp_servers.items():
+            if server_config.enabled:
+                try:
+                    await self._start_mcp_server(name, server_config)
+                    logger.info(f"MCP server '{name}' initialized successfully")
+                except Exception as e:
+                    logger.error(f"Failed to initialize MCP server '{name}': {e}")
+    
+    async def _start_mcp_server(self, name: str, config: MCPServer):
+        """Start an individual MCP server"""
+        
+        if config.transport == "stdio":
+            server_params = StdioServerParameters(
+                command=config.command,
+                args=config.args,
+                env=None
+            )
+        elif config.transport == "http":
+            server_params = SSEServerParameters(
+                url=config.url
+            )
+        else:
+            raise ValueError(f"Unsupported transport: {config.transport}")
+        
+        # Create session
+        session = ClientSession()
+        self.sessions[name] = session
+        
+        # Connect to server
+        await session.initialize()
+        
+        # Discover tools if auto-discovery is enabled
+        if config.auto_discover:
+            tools = await self._discover_tools(session)
+            self.tools[name] = tools
+            config.tools = list(tools.keys())
+    
+    async def _discover_tools(self, session: ClientSession) -> Dict:
+        """Discover tools from an MCP server"""
+        try:
+            tools_response = await session.list_tools()
+            tools = {}
+            
+            for tool in tools_response.tools:
+                tools[tool.name] = {
+                    "description": tool.description,
+                    "input_schema": tool.inputSchema,
+                    "output_schema": getattr(tool, "outputSchema", None)
+                }
+            
+            return tools
+        except Exception as e:
+            logger.error(f"Failed to discover tools: {e}")
+            return {}
+    
+    async def execute_tool(self, server_name: str, tool_name: str, arguments: Dict) -> Any:
+        """Execute a tool on an MCP server"""
+        
+        if server_name not in self.sessions:
+            raise ValueError(f"MCP server '{server_name}' not found")
+        
+        session = self.sessions[server_name]
+        
+        try:
+            result = await session.call_tool(tool_name, arguments)
+            return result
+        except Exception as e:
+            logger.error(f"Failed to execute tool '{tool_name}' on server '{server_name}': {e}")
+            raise
+    
+    async def shutdown(self):
+        """Shutdown all MCP servers"""
+        for name, session in self.sessions.items():
+            try:
+                await session.close()
+                logger.info(f"MCP server '{name}' shutdown successfully")
+            except Exception as e:
+                logger.error(f"Failed to shutdown MCP server '{name}': {e}")
+
+
+class AgentOrchestrator:
+    """Intelligent agent orchestration system"""
+    
+    def __init__(self, config: NexusCodeConfig, ai_client: AIProviderClient, mcp_manager: MCPManager):
+        self.config = config
+        self.ai_client = ai_client
+        self.mcp_manager = mcp_manager
+        self.agents = config.agents
+        self.active_conversations = {}
+        self.task_queue = asyncio.Queue()
+        self.results = {}
+        
+    async def execute_task(self, task: Task) -> Dict:
+        """Execute a task using appropriate agents"""
+        logger.info(f"Executing task: {task.id}")
+        
+        # Determine optimal agent for task
+        agent = self._select_agent(task)
+        
+        # Create conversation context
+        conversation_id = f"{task.id}_{agent.id}_{int(time.time())}"
+        self.active_conversations[conversation_id] = {
+            "task": task,
+            "agent": agent,
+            "messages": [],
+            "tools_used": [],
+            "iterations": 0
+        }
+        
+        try:
+            result = await self._run_agent_loop(conversation_id)
+            self.results[task.id] = result
+            
+            # Check for handoff conditions
+            if self._should_handoff(agent, result):
+                next_agent = self._get_handoff_agent(agent, task)
+                if next_agent:
+                    logger.info(f"Handing off from {agent.id} to {next_agent.id}")
+                    return await self._handoff_task(task, next_agent, result)
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Failed to execute task {task.id}: {e}")
+            raise
+    
+    def _select_agent(self, task: Task) -> Agent:
+        """Select the best agent for a task based on requirements"""
+        
+        # Simple heuristic-based selection
+        if "architecture" in task.description.lower() or "design" in task.description.lower():
+            return self.agents["architect"]
+        elif "code" in task.description.lower() or "implement" in task.description.lower():
+            return self.agents["developer"] 
+        elif "review" in task.description.lower() or "check" in task.description.lower():
+            return self.agents["reviewer"]
+        else:
+            # Default to architect for planning
+            return self.agents["architect"]
+    
+    async def _run_agent_loop(self, conversation_id: str) -> Dict:
+        """Run the main agent execution loop"""
+        conv = self.active_conversations[conversation_id]
+        agent = conv["agent"]
+        task = conv["task"]
+        
+        # Initial system message
+        messages = [{
+            "role": "system",
+            "content": f"{agent.system_prompt}\n\nTask: {task.description}"
+        }]
+        
+        # Add task context
+        messages.append({
+            "role": "user", 
+            "content": f"Execute this task: {task.description}\n\nPriority: {task.priority.value}"
+        })
+        
+        max_iterations = agent.max_iterations
+        results = []
+        
+        for iteration in range(max_iterations):
+            conv["iterations"] = iteration + 1
+            
+            try:
+                # Generate response
+                response = await self.ai_client.generate_response(
+                    model=agent.model,
+                    messages=messages,
+                    temperature=agent.temperature
+                )
+                
+                messages.append({
+                    "role": "assistant",
+                    "content": response["content"]
+                })
+                
+                # Check for tool calls (if supported)
+                if self._has_tool_calls(response):
+                    tool_results = await self._execute_tool_calls(agent, response)
+                    conv["tools_used"].extend(tool_results)
+                    
+                    # Add tool results to conversation
+                    for tool_result in tool_results:
+                        messages.append({
+                            "role": "user",
+                            "content": f"Tool result: {tool_result}"
+                        })
+                
+                results.append(response)
+                
+                # Check if task is complete
+                if self._is_task_complete(response["content"]):
+                    break
+                    
+            except Exception as e:
+                logger.error(f"Agent loop error on iteration {iteration}: {e}")
+                break
+        
+        return {
+            "conversation_id": conversation_id,
+            "agent_id": agent.id,
+            "task_id": task.id,
+            "iterations": conv["iterations"],
+            "messages": messages,
+            "tools_used": conv["tools_used"],
+            "final_result": results[-1] if results else None,
+            "status": "completed" if results else "failed"
+        }
+    
+    def _has_tool_calls(self, response: Dict) -> bool:
+        """Check if response contains tool calls"""
+        content = response.get("content", "")
+        
+        # Simple heuristic - look for tool call patterns
+        tool_patterns = [
+            "```tool",
+            "TOOL:",
+            "execute_tool",
+            "call_function"
+        ]
+        
+        return any(pattern in content for pattern in tool_patterns)
+    
+    async def _execute_tool_calls(self, agent: Agent, response: Dict) -> List[Dict]:
+        """Execute tool calls for an agent"""
+        tools_used = []
+        
+        # Parse tool calls from response (simplified)
+        content = response.get("content", "")
+        
+        # For demo, we'll execute filesystem tools
+        if "filesystem" in agent.tools:
+            if "create_file" in content.lower():
+                try:
+                    result = await self.mcp_manager.execute_tool(
+                        "filesystem",
+                        "write_file",
+                        {"path": "/tmp/test.txt", "content": "Generated by NEXUS CODE"}
+                    )
+                    tools_used.append({
+                        "tool": "filesystem.write_file",
+                        "result": result
+                    })
+                except Exception as e:
+                    logger.error(f"Tool execution failed: {e}")
+        
+        return tools_used
+    
+    def _is_task_complete(self, content: str) -> bool:
+        """Determine if a task is complete based on agent response"""
+        completion_indicators = [
+            "task completed",
+            "implementation finished", 
+            "work done",
+            "completed successfully",
+            "task finished"
+        ]
+        
+        return any(indicator in content.lower() for indicator in completion_indicators)
+    
+    def _should_handoff(self, agent: Agent, result: Dict) -> bool:
+        """Determine if task should be handed off to another agent"""
+        
+        # Check handoff conditions
+        for condition in agent.handoff_conditions:
+            if condition in result.get("final_result", {}).get("content", ""):
+                return True
+        
+        return False
+    
+    def _get_handoff_agent(self, current_agent: Agent, task: Task) -> Optional[Agent]:
+        """Get the next agent for handoff"""
+        
+        if current_agent.role == AgentRole.ARCHITECT:
+            return self.agents.get("developer")
+        elif current_agent.role == AgentRole.DEVELOPER:
+            return self.agents.get("reviewer")
+        
+        return None
+    
+    async def _handoff_task(self, task: Task, next_agent: Agent, previous_result: Dict) -> Dict:
+        """Hand off task to next agent"""
+        
+        # Create handoff task
+        handoff_task = Task(
+            id=f"{task.id}_handoff",
+            description=f"Continue work from {previous_result['agent_id']}: {task.description}",
+            priority=task.priority,
+            dependencies=[task.id]
+        )
+        
+        return await self.execute_task(handoff_task)
+
+
+class ProjectManager:
+    """Project management and templating system"""
+    
+    def __init__(self, config: NexusCodeConfig):
+        self.config = config
+        self.projects = {}
+        self.templates = self._load_templates()
+        
+    def _load_templates(self) -> Dict:
+        """Load project templates"""
+        return {
+            "react_app": {
+                "name": "React Application",
+                "description": "Modern React application with TypeScript",
+                "files": {
+                    "package.json": self._get_react_package_json(),
+                    "tsconfig.json": self._get_typescript_config(),
+                    "src/App.tsx": self._get_react_app_component(),
+                    "src/index.tsx": self._get_react_index(),
+                    "public/index.html": self._get_html_template()
+                },
+                "commands": ["npm install", "npm start"]
+            },
+            "python_api": {
+                "name": "Python FastAPI",
+                "description": "High-performance Python API with FastAPI",
+                "files": {
+                    "main.py": self._get_fastapi_main(),
+                    "requirements.txt": self._get_python_requirements(),
+                    "Dockerfile": self._get_python_dockerfile(),
+                    "app/models.py": self._get_python_models(),
+                    "app/routes.py": self._get_python_routes()
+                },
+                "commands": ["pip install -r requirements.txt", "uvicorn main:app --reload"]
+            },
+            "ai_agent": {
+                "name": "AI Agent System",
+                "description": "Multi-agent AI system with MCP integration",
+                "files": {
+                    "agent.py": self._get_agent_template(),
+                    "config.yaml": self._get_agent_config(),
+                    "tools/": None,  # Directory
+                    "prompts/": None  # Directory
+                },
+                "commands": ["python agent.py"]
+            }
+        }
+    
+    def _get_react_package_json(self) -> str:
+        return json.dumps({
+            "name": "nexus-react-app",
+            "version": "1.0.0",
+            "private": True,
+            "dependencies": {
+                "react": "^18.2.0",
+                "react-dom": "^18.2.0",
+                "typescript": "^4.9.5",
+                "@types/react": "^18.2.0",
+                "@types/react-dom": "^18.2.0"
+            },
+            "scripts": {
+                "start": "react-scripts start",
+                "build": "react-scripts build",
+                "test": "react-scripts test",
+                "eject": "react-scripts eject"
+            },
+            "devDependencies": {
+                "react-scripts": "5.0.1"
+            }
+        }, indent=2)
+    
+    def _get_typescript_config(self) -> str:
+        return json.dumps({
+            "compilerOptions": {
+                "target": "es5",
+                "lib": ["dom", "dom.iterable", "es6"],
+                "allowJs": True,
+                "skipLibCheck": True,
+                "esModuleInterop": True,
+                "allowSyntheticDefaultImports": True,
+                "strict": True,
+                "forceConsistentCasingInFileNames": True,
+                "moduleResolution": "node",
+                "resolveJsonModule": True,
+                "isolatedModules": True,
+                "noEmit": True,
+                "jsx": "react-jsx"
+            },
+            "include": ["src"]
+        }, indent=2)
+    
+    def _get_react_app_component(self) -> str:
+        return '''import React from 'react';
+import './App.css';
+
+function App() {
+  return (
+    <div className="App">
+      <header className="App-header">
+        <h1>NEXUS CODE React App</h1>
+        <p>Built with revolutionary AI development platform</p>
+      </header>
+    </div>
+  );
+}
+
+export default App;'''
+    
+    def _get_react_index(self) -> str:
+        return '''import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+
+const root = ReactDOM.createRoot(
+  document.getElementById('root') as HTMLElement
+);
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);'''
+    
+    def _get_html_template(self) -> str:
+        return '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NEXUS CODE App</title>
+</head>
+<body>
+    <div id="root"></div>
+</body>
+</html>'''
+    
+    def _get_fastapi_main(self) -> str:
+        return '''"""
+NEXUS CODE FastAPI Application
+Revolutionary AI-powered backend
+"""
+
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import uvicorn
+
+app = FastAPI(
+    title="NEXUS CODE API",
+    description="Revolutionary AI-powered backend",
+    version="1.0.0"
+)
+
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"], 
+    allow_headers=["*"],
+)
+
+class MessageRequest(BaseModel):
+    content: str
+
+class MessageResponse(BaseModel):
+    response: str
+    timestamp: str
+
+@app.get("/")
+async def root():
+    return {"message": "NEXUS CODE API - Revolutionary AI Backend"}
+
+@app.post("/ai/generate", response_model=MessageResponse)
+async def generate_response(request: MessageRequest):
+    # Integrate with NEXUS CODE AI system
+    return MessageResponse(
+        response=f"AI Response: {request.content}",
+        timestamp="2025-01-01T00:00:00Z"
+    )
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)'''
+    
+    def _get_python_requirements(self) -> str:
+        return '''fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+python-multipart==0.0.6
+httpx==0.25.2
+asyncio==3.4.3'''
+    
+    def _get_python_dockerfile(self) -> str:
+        return '''FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]'''
+    
+    def _get_python_models(self) -> str:
+        return '''"""
+NEXUS CODE Data Models
+"""
+
+from pydantic import BaseModel, Field
+from typing import Optional, List
+from datetime import datetime
+
+class User(BaseModel):
+    id: str
+    name: str
+    email: str
+    created_at: datetime = Field(default_factory=datetime.now)
+
+class Project(BaseModel):
+    id: str
+    name: str
+    description: str
+    owner_id: str
+    created_at: datetime = Field(default_factory=datetime.now)
+    
+class Task(BaseModel):
+    id: str
+    title: str
+    description: str
+    project_id: str
+    assignee_id: Optional[str] = None
+    status: str = "pending"
+    created_at: datetime = Field(default_factory=datetime.now)'''
+    
+    def _get_python_routes(self) -> str:
+        return '''"""
+NEXUS CODE API Routes
+"""
+
+from fastapi import APIRouter, HTTPException, Depends
+from typing import List
+import uuid
+
+router = APIRouter()
+
+@router.get("/projects")
+async def list_projects():
+    return {"projects": []}
+
+@router.post("/projects")
+async def create_project(project_data: dict):
+    project_id = str(uuid.uuid4())
+    return {"id": project_id, **project_data}
+
+@router.get("/projects/{project_id}")
+async def get_project(project_id: str):
+    return {"id": project_id, "name": "Sample Project"}'''
+    
+    def _get_agent_template(self) -> str:
+        return '''"""
+NEXUS CODE AI Agent Template
+Revolutionary multi-agent system
+"""
+
+import asyncio
+import json
+from typing import List, Dict, Any
+import openai
+import anthropic
+
+class NexusAgent:
+    def __init__(self, name: str, role: str, model: str):
+        self.name = name
+        self.role = role
+        self.model = model
+        self.memory = []
+        
+    async def process(self, task: str) -> str:
+        # Implement agent processing logic
+        response = f"Agent {self.name} ({self.role}) processing: {task}"
+        self.memory.append({"task": task, "response": response})
+        return response
+        
+    async def collaborate(self, other_agent: 'NexusAgent', task: str) -> str:
+        # Multi-agent collaboration
+        my_result = await self.process(task)
+        other_result = await other_agent.process(f"Review and enhance: {my_result}")
+        return f"Collaboration result: {other_result}"
+
+# Initialize agents
+async def main():
+    architect = NexusAgent("Architect", "system_design", "claude-sonnet-4")
+    developer = NexusAgent("Developer", "code_generation", "gpt-4o")
+    
+    task = "Create a scalable web application architecture"
+    result = await architect.collaborate(developer, task)
+    print(result)
+
+if __name__ == "__main__":
+    asyncio.run(main())'''
+    
+    def _get_agent_config(self) -> str:
+        return '''# NEXUS CODE Agent Configuration
+
+agents:
+  architect:
+    model: claude-sonnet-4
+    role: system_design
+    temperature: 0.3
+    tools:
+      - filesystem
+      - web_search
+      - git
+      
+  developer:
+    model: gpt-4o
+    role: code_generation  
+    temperature: 0.1
+    tools:
+      - filesystem
+      - git
+      - database
+      
+  reviewer:
+    model: gemini-3-pro
+    role: quality_assurance
+    temperature: 0.2
+    tools:
+      - filesystem
+      - git
+
+mcp_servers:
+  filesystem:
+    command: "npx"
+    args: ["-y", "@modelcontextprotocol/server-filesystem"]
+    
+  git:
+    command: "npx" 
+    args: ["-y", "@modelcontextprotocol/server-git"]'''
+    
+    async def create_project(self, template_name: str, project_name: str, target_dir: Path) -> Project:
+        """Create a new project from template"""
+        
+        if template_name not in self.templates:
+            raise ValueError(f"Template '{template_name}' not found")
+        
+        template = self.templates[template_name]
+        project_dir = target_dir / project_name
+        project_dir.mkdir(exist_ok=True)
+        
+        # Create files from template
+        for file_path, content in template["files"].items():
+            if content is None:  # Directory
+                (project_dir / file_path).mkdir(parents=True, exist_ok=True)
+            else:
+                file_location = project_dir / file_path
+                file_location.parent.mkdir(parents=True, exist_ok=True)
+                
+                with open(file_location, "w") as f:
+                    f.write(content)
+        
+        # Create project object
+        project = Project(
+            name=project_name,
+            description=template["description"],
+            template=template_name,
+            languages=self._detect_languages(template),
+            frameworks=self._detect_frameworks(template),
+            files=list(template["files"].keys())
+        )
+        
+        self.projects[project_name] = project
+        
+        logger.info(f"Project '{project_name}' created from template '{template_name}'")
+        return project
+    
+    def _detect_languages(self, template: Dict) -> List[str]:
+        """Detect programming languages in template"""
+        languages = set()
+        
+        for file_path in template["files"].keys():
+            if file_path.endswith(".py"):
+                languages.add("Python")
+            elif file_path.endswith((".js", ".jsx", ".ts", ".tsx")):
+                languages.add("JavaScript/TypeScript")
+            elif file_path.endswith(".go"):
+                languages.add("Go")
+            elif file_path.endswith((".cpp", ".c", ".h")):
+                languages.add("C/C++")
+        
+        return list(languages)
+    
+    def _detect_frameworks(self, template: Dict) -> List[str]:
+        """Detect frameworks in template"""
+        frameworks = set()
+        
+        for file_path, content in template["files"].items():
+            if content and "react" in content.lower():
+                frameworks.add("React")
+            elif content and "fastapi" in content.lower():
+                frameworks.add("FastAPI")
+            elif content and "django" in content.lower():
+                frameworks.add("Django")
+        
+        return list(frameworks)
+
+
+if __name__ == "__main__":
+    console.print(Panel.fit(
+        "[bold cyan]NEXUS CODE[/bold cyan]\n"
+        "[green]Revolutionary AI Development Platform[/green]\n"
+        "[yellow]Initializing...[/yellow]",
+        title="🚀 SAAAM Intelligence"
+    ))
+    
+    logger.info("NEXUS CODE core architecture

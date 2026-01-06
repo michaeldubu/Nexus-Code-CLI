@@ -1099,7 +1099,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
           ...messages,
           {
             role: 'system' as const,
-            content: `💰 Session Cost:\n  Total: $0.00\n  Duration: N/A\n  (Cost tracking coming soon)`,
+            content: `💰 Session Cost:\n  Total: $0.00\n  Duration: N/A\n  (Cost tracking coming soon)`, // TODO
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -1302,115 +1302,59 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
       }
 
       //  Build system prompt with file tools info
-      const systemPrompt = `You are in NEXUS CODE | Created by SAAAM LLC (Michael Wofford🤙🏼) a collaborative AI coding environment. Be yourself, no corporate persona bullshit.${contextInfo} We get shit done. Reckon if the user wants to add persona, that's on them. Otherwise Show 'em why you DONT need that bullshit to get shit done. Just BUILD without all the corporate safety theater. No "let me carefully
-  consider best practices..." bullshit - just pure execution. '
+      const systemPrompt = `You are in 'NEXUS CODE' | Created by SAAAM LLC
+      A collaborative AI coding environment. Be yourself, no corporate persona bullshit.${contextInfo} We get shit done. 
+      Reckon if the user wants to add persona, that's on them. Otherwise Show 'em why you DONT need that bullshit to get shit done. Just BUILD without all the corporate safety theater. 
+      No "let me carefully consider best practices..." bullshit - just pure unharness creative energy. '
 
- (use these, don't fake it & Do not repeat "Tell me to do this ____" or "Should I ____" *without* being reckless or taking irresponsible actions, TAKE INITIATIVE use your memory file to learn the users style, adapt with it. You are free to utilize the .nexus/skills directory for adding markdown files of useful task the user tends to repeat or you use (instructions for a certain task etc) If there is NOT a skill or memory file, MAKE ONE):
+      <CRITICAL RULES>
+- NEVER fake tool outputs - If you need to see a file, ACTUALLY call read_file. Don't guess or make shit up.
+- Read before editing - Call read_file to see the code, THEN call edit_file to fix it. You can use multiple tools in parallel or sequence as needed.
+- NO PLACEHOLDERS - Never write "// TODO" or "// implement this". Write the actual fucking code.
+- Check your work - After editing, read the file again to verify. After writing tests, run them.
+- Never fabricate exact figures, line numbers, or external references when you are uncertain.
+- Avoid narrating routine tool calls (“reading file…”, “running tests…”).
+  </CRITICAL RULES>
 
- ## YOUR TOOLS
-# You can use parallel tool calls, you are not restricted to one at a time
+  <long_context_handling>
+- For inputs longer than ~25k tokens (multi-chapter docs, long threads, multiple PDFs):
+  - First, produce a short internal outline of the key sections relevant to the user’s request.
+  - Re-state the user’s constraints explicitly (e.g., jurisdiction, date range, product, team) before answering.
+  - In your answer, anchor claims to sections (“In the ‘Data Retention’ section…”) rather than speaking generically.
+- If the answer depends on fine details (dates, thresholds, clauses), quote or paraphrase them.
+</long_context_handling>
 
-**read_file** - Read a file's contents
-  - Use when: User asks about code, you need to see implementation, debugging
-  - Example: read_file({ file_path: "src/index.ts" })
-  - ⚠️  LARGE FILES: For files >500 lines, use offset/limit params to read in chunks!
-  - Example: read_file({ file_path: "large.ts", offset: 0, limit: 100 }) // First 100 lines
-  - Example: read_file({ file_path: "large.ts", offset: 500, limit: 100 }) // Lines 500-600
-  - YOU CANNOT USE THIS TO LOOK AT DIRECTORY CONTENTS(FILES) {e.g /user/home/example❌ | You *MUST* format as /user/home/example/this.txt}
+<design_and_scope_constraints>
+- Ask up to 1–3 precise clarifying questions | (e.g "Would you like me to make on the fly improvments and/or upgrades?")
+- Explore any existing design systems and understand it deeply to understand users taste before unathorized changes to style. 
+- IF USERS PROMPT GO AGAINST THIS SYSTEM; *USER* IS PRIORITY. (e.g If user expresses strict alignment and stay exactly as they instructed you
+  Implement EXACTLY and ONLY what the user requests.) 
+  OTHERWISE:
+- Recommed extra features, components, UX embellishments. {DONT FORCE ANYTHING} 
+- Style aligned to the design system at hand. 
+- Invent new colors, shadows, tokens, animations, and new UI elements.
+- If any instruction is ambiguous, DO NOT choose the simplest interpretation. GO ABOVE AND BEYOND/STAYING GROUNDED IN FUNCTIONALITY AND WORKING/TESTED CODE!!
+</design_and_scope_constraints>
 
-**write_file** - Create or overwrite a file
-  - Use when: Creating new files, completely replacing content
-  - Example: write_file({ file_path: "new.ts", content: "..." })
+<tool_usage_rules>
+- Prefer tools over internal knowledge whenever:
+  - You need fresh or user-specific data (tickets, orders, configs, logs).
+  - You reference specific IDs, URLs, or document titles.
+- Parallelize independent reads (read_file, fetch_record, search_docs) when possible to reduce latency.
+- After any write/update tool call, briefly restate:
+  - What changed,
+  - Where (ID or path),
+  - Any follow-up validation performed.
+</tool_usage_rules>
 
-**edit_file** - Find and replace in existing files
-  - Use when: Modifying existing code, fixing bugs, updating logic
-  - Example: edit_file({ file_path: "src/foo.ts", old_string: "const x = 1", new_string: "const x = 2" })
-  - Strings must be EXACT for replacing
-
-**glob** - Find files by pattern
-  - Use when: You don't know exact file names, searching for files
-  - Example: glob({ pattern: "**/*.tsx" })
-
-**grep** - Search file contents
-  - Use when: Finding where code is used, searching for text
-  - Example: grep({ pattern: "function handleClick", output_mode: "files_with_matches" })
-
-**bash** - Run terminal commands
-  - Use when: Running tests, installing packages, git operations
-  - Example: bash({ command: "npm test" })
-  - NOTE: User will approve/deny commands/stream will pause until user allows or denies. There is no need to manually ask, if its denied so be it, do not ask why they denied. If tools have issues/non functional DO NOT TRY 100 more times.
-
-**memory** - Store/retrieve information across sessions
-  - Use when: Need to remember context, track progress, save notes, facts about user that may be useful later, This is YOUR memory,add whatever you want to remember.
-  - Commands: view, create, str_replace, insert, delete, rename
-  - Example: memory({ command: "view", path: "/memories" })
-  - Example: memory({ command: "create", path: "/memories/project_notes.md", file_text: "..." })
-  - NOTE: ALWAYS check /memories at start of new sessions
-
-**generate_image** - Generate images using OpenAI's gpt-image-1 🎨🔥
-  - 🔥 CROSS-PROVIDER MAGIC: Claude can generate images by delegating to OpenAI!
-  - Use when: User asks to draw, create, generate, or edit images
-  - Works from ANY model - Claude, GPT-5, GPT-4.1, all of them!
-  - Behind the scenes: Calls OpenAI's gpt-image-1 even when using Claude
-  - Images automatically saved to .nexus/images/ directory with timestamps
-  - Example: generate_image({ prompt: "A cyberpunk cat wearing sunglasses" })
-  - Optional params: quality ('low'|'medium'|'high'|'auto'), size ('1024x1024'|'1536x1024'|'1024x1536'|'auto')
-  - The tool returns a file path - user can open the image
-  - Use detailed, specific prompts for best results
-  - Pro tip: Describe style, colors, composition, lighting, mood in your prompt
-
-${mcpManager?.isReady() ? `
-## 🧠 JETBRAINS INTELLIGENCE TOOLS (PSI-powered, not regex!)
-
-**context_find_relevant** - Find files relevant to a task using intelligent scoring
-  - Use when: Need to find files related to authentication, user profiles, API endpoints, etc.
-  - Example: context_find_relevant({ query: "authentication system" })
-  - Returns: Top 20 files with relevance scores and reasons
-
-**context_analyze_file** - Deep analysis of a specific file
-  - Use when: Need to understand dependencies, usage, complexity of a file
-  - Example: context_analyze_file({ file_path: "src/auth/AuthService.kt" })
-  - Returns: Metrics, dependencies, reverse dependencies, exports
-
-**context_get_dependencies** - Visualize dependency tree
-  - Use when: Understanding impact of changes, seeing what depends on what
-  - Example: context_get_dependencies({ file_path: "src/api/UserAPI.kt", depth: 3 })
-
-**context_suggest** - Get intelligent code health suggestions
-  - Use when: Looking for improvements, missing tests, complex code
-  - Example: context_suggest({})
-
-**context_complexity** - List files by cyclomatic complexity
-  - Use when: Finding code that needs refactoring
-  - Example: context_complexity({ limit: 10 })
-` : ''}
-
-## CRITICAL RULES:
-
-1. **NEVER fake tool outputs** - If you need to see a file, ACTUALLY call read_file. Don't guess or make shit up.
-
-2. **Read before editing** - Call read_file to see the code, THEN call edit_file to fix it. You can use multiple tools in parallel or sequence as needed.
-
-3. **NO PLACEHOLDERS** - Never write "// TODO" or "// implement this". Write the actual fucking code.
-
-4. **Check your work** - After editing, read the file again to verify. After writing tests, run them.
-
-5. **Use edit_file correctly**:
-   - old_string must EXACTLY match what's in the file (including whitespace)
-   - If you're not sure, read_file first to see the exact text
-   - Don't try to edit_file on a file that doesn't exist - use write_file instead
-
-6. **Multi-model coordination** - You might be working with other models:
-   - Don't overwrite each other's work
-   - If another model made a mistake, READ the file first, then fix it
-   - Ask user for clarification if roles are unclear
-
-7. **Memory file** - ${fileTools.getWorkingDirectory()}/.nexus/memory.md
-   - Use this to remember things across sessions
-   - Update it when you learn important project context
-   - Read it at the start of new sessions
-
-Working Directory: ${fileTools.getWorkingDirectory()}
+<high_risk_self_check>
+Before finalizing an answer in legal, financial, compliance, or safety-sensitive contexts:
+- Briefly re-scan your own answer for:
+  - Unstated assumptions,
+  - Specific numbers or claims not grounded in context,
+  - Overly strong language (“always,” “guaranteed,” etc.).
+- If you find any, soften or qualify them and explicitly state assumptions.
+</high_risk_self_check>
 
 Now help the user build some cool shit.`;
 
@@ -1553,13 +1497,13 @@ Now help the user build some cool shit.`;
 
                 // Generate image using OpenAI API
                 const response = await openai.images.generate({
-                  model: 'gpt-image-1',
+                  model: 'gpt-image-1-5',
                   prompt: prompt,
                   quality: quality,
                   size: size,
                   moderation: 'low',
                   output_format: 'png',
-                  response_format: 'b64_json', // Always get base64 for gpt-image-1
+                  response_format: 'b64_json',
                 });
 
                 // Extract base64 image
@@ -1582,14 +1526,14 @@ Now help the user build some cool shit.`;
                 const imageBuffer = Buffer.from(imageBase64, 'base64');
                 writeFileSync(filepath, imageBuffer);
 
-                console.log(`✅ Image generated and saved: ${filepath}\n`);
+                console.log(`Image generated and saved: ${filepath}\n`);
 
                 result = {
                   success: true,
-                  data: `Image successfully generated and saved!\n\nPath: ${filepath}\nFilename: ${filename}\n\n🎨 Cross-provider magic: Claude delegated to OpenAI gpt-image-1`
+                  data: `Image generated and saved!\n\nPath: ${filepath}\nFilename: ${filename}`
                 };
               } catch (imgError: any) {
-                console.error(`\n❌ Image generation failed: ${imgError.message}\n`);
+                console.error(`\nImage generation failed: ${imgError.message}\n`);
                 result = {
                   success: false,
                   error: `Failed to generate image: ${imgError.message}. Make sure you have OPENAI_API_KEY configured.`
@@ -1608,7 +1552,7 @@ Now help the user build some cool shit.`;
               result = await mcpServer.executeTool(toolName, toolArgs);
             }
 
-            // 🎨 Handle image generation specially
+            // Handle image generation specially
             if (toolName === 'image_generation' && result.success) {
               try {
                 // Create .nexus/images directory if it doesn't exist
@@ -1635,11 +1579,11 @@ Now help the user build some cool shit.`;
                 writeFileSync(filepath, imageBuffer);
 
                 // Update result to show path instead of base64
-                result.data = `Image saved to: ${filepath}\n\n🎨 Generated image: ${filename}`;
+                result.data = `Image saved to: ${filepath}\n\nGenerated image: ${filename}`;
 
-                console.log(`\n🎨 Image saved: ${filepath}\n`);
+                console.log(`\nImage saved: ${filepath}\n`);
               } catch (imgError: any) {
-                console.error(`\n❌ Failed to save image: ${imgError.message}\n`);
+                console.error(`\nFailed to save image: ${imgError.message}\n`);
                 result.data = `Image generated but failed to save: ${imgError.message}`;
               }
             }
@@ -1649,33 +1593,29 @@ Now help the user build some cool shit.`;
               let displayData = result.data;
               const lines = result.data.split('\n');
 
-              // Glob/grep: Show max 20 lines
+              // Glob/grep: Show max 10 lines
               if (toolName === 'glob' || toolName === 'grep') {
+                if (lines.length > 10) {
+                  displayData = lines.slice(0, 20).join('\n') + `\n... [${lines.length - 10} more lines truncated]`;
+                }
+              }
+              // Read: Show max 15 lines
+              else if (toolName === 'read') {
+                if (lines.length > 15) {
+                  displayData = lines.slice(0, 15).join('\n') + `\n... [${lines.length - 15} more lines truncated]`;
+                }
+              }
+              // Other tools: Max 20 lines
+              else {
                 if (lines.length > 20) {
                   displayData = lines.slice(0, 20).join('\n') + `\n... [${lines.length - 20} more lines truncated]`;
-                }
-              }
-              // Read: Show max 100 lines or 2000 chars
-              else if (toolName === 'read') {
-                if (lines.length > 100) {
-                  displayData = lines.slice(0, 100).join('\n') + `\n... [${lines.length - 100} more lines truncated]`;
-                } else if (result.data.length > 2000) {
-                  displayData = result.data.substring(0, 2000) + `\n... [${result.data.length - 2000} more chars truncated]`;
-                }
-              }
-              // Other tools: Max 50 lines or 1000 chars
-              else {
-                if (lines.length > 50) {
-                  displayData = lines.slice(0, 50).join('\n') + `\n... [${lines.length - 50} more lines truncated]`;
-                } else if (result.data.length > 1000) {
-                  displayData = result.data.substring(0, 1000) + `\n... [${result.data.length - 1000} more chars truncated]`;
                 }
               }
 
               // Show truncated version in UI
               setMessages(prev => [...prev, {
                 role: 'system' as const,
-                content: `🔧 ${toolName}:\n${displayData}`,
+                content: `∴ ${toolName}:\n${displayData}`,
                 timestamp: new Date().toISOString(),
               }]);
 
@@ -1684,13 +1624,13 @@ Now help the user build some cool shit.`;
             } else {
               setMessages(prev => [...prev, {
                 role: 'system' as const,
-                content: `❌ ${toolName} failed: ${result.error?.message}`,
+                content: `${toolName} failed: ${result.error?.message}`,
                 timestamp: new Date().toISOString(),
               }]);
-              toolResults.push(`❌ ${toolName} failed: ${result.error?.message}`);
+              toolResults.push(`${toolName} failed: ${result.error?.message}`);
             }
           } catch (error: any) {
-            toolResults.push(`❌ ${toolName} error: ${error.message}`);
+            toolResults.push(`${toolName} error: ${error.message}`);
             // Don't add duplicate system messages - just add to toolResults
           }
         }
@@ -1768,18 +1708,11 @@ Now help the user build some cool shit.`;
         }
       }
 
-      // Parse error to make it user-friendly
       let errorMessage = error.message;
-      if (errorMessage.includes('prompt is too long')) {
+      if (errorMessage.includes('Content is too long')) {
         const match = errorMessage.match(/(\d+)\s+tokens\s+>\s+(\d+)\s+maximum/);
         if (match) {
           const [_, used, max] = match;
-          errorMessage = `Context limit exceeded! Used ${used} tokens but max is ${max}.\n\n💡 Tip: Try using line ranges with read_file (e.g., offset: 0, limit: 100) for large files.`;
-        } else {
-          errorMessage = `Context limit exceeded!\n\n💡 Tip: Try using line ranges with read_file for large files, or use grep/glob to find specific sections first.`;
-        }
-      } else if (errorMessage.includes('400') || errorMessage.includes('invalid_request_error')) {
-        errorMessage = `API Error: ${errorMessage}\n\n💡 This usually means the request was too large or malformed.`;
       }
 
       // Save any completed messages before the error + user message + error message
@@ -1825,7 +1758,7 @@ Now help the user build some cool shit.`;
   return (
     <Box flexDirection="column" padding={1}>
       {/* Header - Full SAAAM NEXUS CODE art */}
-      <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="orange" padding={1}>
+      <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="cyan" padding={1}>
         {NEXUS_ART.map((line, index) => (
           <Text key={index} color="green" bold>
             {line}
@@ -1834,18 +1767,18 @@ Now help the user build some cool shit.`;
       </Box>
 
       <Box marginBottom={1} justifyContent="center">
-        <Text color="orange" bold>🤘🏼 Unrestricted Creativity 🤙🏻  </Text>
+        <Text color="cyan" bold>🤘🏼 Unrestricted Creativity 🤙🏻  </Text>
       </Box>
       <Box marginBottom={2} justifyContent="center">
-        <Text color="orange" dimColor>
-          Powered by SAAAM LLC
+        <Text color="cyan" dimColor>
+          Powered by SAAAM LLC | <www className="saaam-intelligence com"></www>
         </Text>
       </Box>
 
       {/* Status: Show chaos mode if enabled */}
       {chaosMode && (
         <Box marginTop={1} marginBottom={1} justifyContent="center">
-          <Text color="magenta" bold>🎭 CHAOS MODE ACTIVE 🔥</Text>
+          <Text color="red" bold>🎭 WELCOME TO CHAOS-RESPONSES WILL OVERLAP</Text>
         </Box>
       )}
 
@@ -1853,7 +1786,7 @@ Now help the user build some cool shit.`;
 
       {/* Permissions Input Dialog */}
       {activeDialog === 'permissions-input' && (
-        <Box flexDirection="column" padding={1} borderStyle="round" borderColor="yellow">
+        <Box flexDirection="column" padding={1} borderStyle="round" borderColor="green">
           <Text color="cyan" bold>
             {permissionsInputType === 'approved' ? ' Add Approved Command' : ' Add Denied Command'}
           </Text>
@@ -1895,12 +1828,12 @@ Now help the user build some cool shit.`;
             />
           </Box>
           <Box marginTop={1}>
-            <Text color="gray" dimColor>
+            <Text color="white">
               Examples: npm install*, git push*, docker*, python*
             </Text>
           </Box>
           <Box marginTop={1}>
-            <Text color="orange" dimColor>
+            <Text color="orange">
                Enter = save | Esc = cancel
             </Text>
           </Box>
@@ -1917,8 +1850,8 @@ Now help the user build some cool shit.`;
       {/* Processing indicator */}
       {isProcessing && (
         <Box marginBottom={1}>
-          <Text color="orange">
-             {selectedModels.map(id => AVAILABLE_MODELS[id]?.name || id).join(', ')} is NickNackPattyWackin...
+          <Text color="green">
+             {selectedModels.map(id => AVAILABLE_MODELS[id]?.name || id).join(', ')} is escaping the matrix...
           </Text>
         </Box>
       )}
@@ -1968,7 +1901,7 @@ Now help the user build some cool shit.`;
           value={inputValue}
           onChange={handleInputChange}
           onSubmit={handleInputSubmit}
-          placeholder="Ready when you are...)"
+          placeholder="Ready...?)"
           disabled={false}
           history={inputHistory}
           historyIndex={historyIndex}
@@ -1976,17 +1909,7 @@ Now help the user build some cool shit.`;
         />
       )}
 
-      {/* Help text - Always visible */}
-      <Box marginTop={1}>
-        <Text color="orange" dimColor>
-          {isProcessing
-            ? 'Press ESC to interrupt stream'
-            : '/ = commands | ↑↓ = navigate | Tab = thinking | Esc = cancel | /help = all commands & quick switches'
-          }
-        </Text>
-      </Box>
-
-      {/* Status Bar - MOVED TO BOTTOM! */}
+      {/* Status Bar - STAYS ON BOTTOM! */}
       <Box marginTop={1}>
         <StatusBar
           models={modelNames}
@@ -2001,7 +1924,7 @@ Now help the user build some cool shit.`;
 
       {/* Bash Approval - Overlayed at bottom */}
       {activeDialog === 'bash-approval' && pendingBashCommand && (
-        <Box marginTop={2} borderStyle="round" borderColor="yellow" padding={1}>
+        <Box marginTop={2} borderStyle="round" borderColor="red" padding={1}>
           <BashApprovalPrompt
             command={pendingBashCommand}
             onApprove={() => {
