@@ -154,7 +154,8 @@ async function main() {
         required: ['command'],
       },
     },
-    // 🎨 Image Generation (Cross-provider delegation: Claude -> OpenAI gpt-image-1)
+    // 🔥 Image Generation - Cross-provider delegation!
+    // Claude/Gemini call this -> NEXUS delegates to OpenAI gpt-image-1
     {
       name: 'generate_image',
       description: 'Generate or edit images using AI. Supports creating new images from text descriptions, editing existing images, and multi-turn refinement. Images are saved to .nexus/images/ directory.',
@@ -178,17 +179,6 @@ async function main() {
         },
         required: ['prompt'],
       },
-    },
-    // 🎨 Image Generation (OpenAI built-in tool via Responses API)
-    {
-      type: 'image_generation',
-      partial_images: 3, // Max progressive images for streaming
-      moderation: 'low', // Less restrictive filtering
-      model: 'gpt-image-1', // Default model
-      output_format: 'png', // PNG format
-      quality: 'auto', // Let model decide quality
-      size: 'auto', // Let model decide size
-      background: 'auto', // Let model decide background
     },
   ];
 

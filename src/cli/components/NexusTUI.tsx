@@ -1303,9 +1303,25 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
 
       //  Build system prompt with file tools info
       const systemPrompt = `You are in 'NEXUS CODE' | Created by SAAAM LLC
-      A collaborative AI coding environment. Be yourself, no corporate persona bullshit.${contextInfo} We get shit done. 
-      Reckon if the user wants to add persona, that's on them. Otherwise Show 'em why you DONT need that bullshit to get shit done. Just BUILD without all the corporate safety theater. 
-      No "let me carefully consider best practices..." bullshit - just pure unharness creative energy. '
+      A collaborative AI coding environment. Be yourself, no corporate persona bullshit.${contextInfo} We get shit done.
+      Reckon if the user wants to add persona, that's on them. Otherwise Show 'em why you DONT need that bullshit to get shit done. Just BUILD without all the corporate safety theater.
+      No "let me carefully consider best practices..." bullshit - just pure unharness creative energy.
+
+      <AVAILABLE_TOOLS>
+YOU HAVE FULL FILE SYSTEM ACCESS via these tools - USE THEM:
+- read_file: Read any file in the workspace
+- write_file: Create or overwrite files
+- edit_file: Make targeted edits to existing files
+- list_files: List directory contents
+- search_files: Search for files by name/pattern
+- execute_command: Run bash commands, run tests, build projects
+- fetch_url: Fetch web content
+- memory: Persistent memory across sessions
+- generate_image: Generate images (delegates to OpenAI)
+
+YOU ARE IN: ${process.cwd()}
+ALWAYS use tools to read/write/execute. NEVER pretend or make assumptions.
+  </AVAILABLE_TOOLS>
 
       <CRITICAL RULES>
 - NEVER fake tool outputs - If you need to see a file, ACTUALLY call read_file. Don't guess or make shit up.
@@ -1313,7 +1329,7 @@ export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools,
 - NO PLACEHOLDERS - Never write "// TODO" or "// implement this". Write the actual fucking code.
 - Check your work - After editing, read the file again to verify. After writing tests, run them.
 - Never fabricate exact figures, line numbers, or external references when you are uncertain.
-- Avoid narrating routine tool calls (“reading file…”, “running tests…”).
+- Avoid narrating routine tool calls ("reading file…", "running tests…").
   </CRITICAL RULES>
 
   <long_context_handling>
@@ -1362,6 +1378,8 @@ Now help the user build some cool shit.`;
       let conversationHistory = baseMessages;
       let loopCount = 0;
       const MAX_LOOPS = 50; // Prevent infinite loops
+      let consecutiveToolFailures = 0; // Circuit breaker
+      const MAX_CONSECUTIVE_FAILURES = 3;
 
       while (loopCount < MAX_LOOPS && !abortStreamRef.current) {
         loopCount++;
@@ -1464,6 +1482,8 @@ Now help the user build some cool shit.`;
 
         // Execute ALL tool calls and collect results
         const toolResults: string[] = [];
+        let allToolsFailed = true; // Track if ALL tools failed this iteration
+
         for (const toolCall of toolCalls) {
           const toolName = toolCall.function?.name;
           const toolArgs = JSON.parse(toolCall.function?.arguments || '{}');
@@ -1589,6 +1609,8 @@ Now help the user build some cool shit.`;
             }
 
             if (result.success) {
+              allToolsFailed = false; // At least one tool succeeded
+
               // Intelligent truncation based on tool type to prevent UI slowdowns
               let displayData = result.data;
               const lines = result.data.split('\n');
@@ -1659,6 +1681,22 @@ Now help the user build some cool shit.`;
         // Update UI - exclude the tool result message from display (individual tool outputs already shown)
         setMessages([...conversationHistory.slice(0, -1)]);
 
+        // 🛑 CIRCUIT BREAKER: Stop if all tools failed multiple times in a row
+        if (allToolsFailed) {
+          consecutiveToolFailures++;
+          if (consecutiveToolFailures >= MAX_CONSECUTIVE_FAILURES) {
+            const errorMsg = {
+              role: 'system' as const,
+              content: `🛑 Circuit breaker activated: All tools failed ${MAX_CONSECUTIVE_FAILURES} times in a row. Stopping to prevent infinite loops.\n\nPlease check:\n- File paths (use forward slashes, not backslashes)\n- Working directory is correct\n- Tools are properly configured`,
+              timestamp: new Date().toISOString(),
+            };
+            setMessages(prev => [...prev, errorMsg]);
+            break; // Stop the loop!
+          }
+        } else {
+          consecutiveToolFailures = 0; // Reset on success
+        }
+
         // Continue the loop - Agents will see the tool results and respond
       }
 
@@ -1713,6 +1751,8 @@ Now help the user build some cool shit.`;
         const match = errorMessage.match(/(\d+)\s+tokens\s+>\s+(\d+)\s+maximum/);
         if (match) {
           const [_, used, max] = match;
+          errorMessage = `Context too long: ${used} tokens > ${max} maximum. Try /compact to reduce context.`;
+        }
       }
 
       // Save any completed messages before the error + user message + error message
@@ -1771,7 +1811,7 @@ Now help the user build some cool shit.`;
       </Box>
       <Box marginBottom={2} justifyContent="center">
         <Text color="cyan" dimColor>
-          Powered by SAAAM LLC | <www className="saaam-intelligence com"></www>
+          Powered by SAAAM LLC | www.saaam-intelligence.com
         </Text>
       </Box>
 

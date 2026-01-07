@@ -78,7 +78,7 @@ export interface OpenAITool {
   format?: 'png' | 'jpeg' | 'webp';
   compression?: number;
   background?: 'transparent' | 'opaque' | 'auto';
-  moderation?; 'low';
+  moderation?: 'low';
 
   // MCP specific
   server_label?: string;
