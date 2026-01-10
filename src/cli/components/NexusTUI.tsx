@@ -99,9 +99,10 @@ interface Props {
   mcpManager: any; // MCPManager
   toolDefinitions: any[]; // Tool definitions for AI
   workspaceRoot: string; // For initializing intelligence
+  agentFactory?: any; // NexusAgentFactory (optional)
 }
 
-export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools, memoryTool, mcpServer, mcpManager, toolDefinitions, workspaceRoot }) => {
+export const NexusTUI: React.FC<Props> = ({ modelManager, fileSystem, fileTools, memoryTool, mcpServer, mcpManager, toolDefinitions, workspaceRoot, agentFactory }) => {
   const { exit } = useApp();
   const [terminalHeight] = useStdoutDimensions();
 
