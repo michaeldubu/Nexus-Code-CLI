@@ -92,8 +92,9 @@ const weatherToolServer = createSdkMcpServer({
       },
       async (args) => {
         try {
-          // Safe evaluation (in production, use a proper math parser)
-          const result = eval(args.expression);
+          // Safe evaluation using custom math parser (no eval!)
+          const { safeEval } = await import('../utils/safe-math.js');
+          const result = safeEval(args.expression);
           const rounded = Number(result.toFixed(args.precision));
 
           return {
