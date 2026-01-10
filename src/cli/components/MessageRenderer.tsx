@@ -112,7 +112,7 @@ export const MessageRenderer: React.FC<Props> = ({ messages, currentModel }) => 
 
               {msg.toolCalls && msg.toolCalls.length > 0 && (
                 <Box marginLeft={2} marginTop={1}>
-                  <Text color="blue">🔧 Tool Calls: {msg.toolCalls.length}</Text>
+                  <Text color="cyan">🔧 Tool Calls: {msg.toolCalls.length}</Text>
                 </Box>
               )}
             </Box>

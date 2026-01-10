@@ -1,9 +1,10 @@
 /**
  * Multi-Line Input Component
- * Supports newlines with Enter, submit with Shift+Enter or Ctrl+Enter
+ * Supports newlines with Shift+Enter, submit with Enter
  * Supports image/file paste detection
+ * FIXED: Cursor positioning, paste batching, color scheme
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import fs from 'fs';
 import path from 'path';
@@ -38,7 +39,10 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
 }) => {
   const [cursorOffset, setCursorOffset] = useState(0);
   const [attachedFiles, setAttachedFiles] = useState<ContentBlock[]>([]);
-  const [lastInputLength, setLastInputLength] = useState(0);
+
+  // Paste buffer to batch rapid character inputs (FIXES VERTICAL TEXT BUG)
+  const pasteBufferRef = useRef<string>('');
+  const pasteTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Safety net: keep cursor within bounds when value changes externally
   useEffect(() => {
@@ -170,55 +174,71 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
 
       // Regular character input
       if (input && !key.ctrl && !key.meta) {
-        // Detect paste (large input at once)
-        const isPaste = input.length > 50; // More than 50 chars = probably a paste
-        const pastedLines = input.split('\n');
-        const isPasteMultiline = pastedLines.length > 3;
+        // PASTE BATCHING - Fixes "vertical text" bug when pasting
+        // When rapid characters arrive (paste), batch them together with a short timeout
 
-        let finalInput = input;
-
-        // Wrap large pastes in [Pasted X Lines] format
-        if (isPaste && isPasteMultiline) {
-          finalInput = `[Pasted ${pastedLines.length} Lines]\n${input}`;
+        // Clear any existing paste timeout
+        if (pasteTimeoutRef.current) {
+          clearTimeout(pasteTimeoutRef.current);
         }
 
-        const newValue =
-          value.slice(0, cursorOffset) + finalInput + value.slice(cursorOffset);
-        const newCursor = cursorOffset + finalInput.length;
+        // Add to paste buffer
+        pasteBufferRef.current += input;
 
-        onChange(newValue);
-        setCursorOffset(newCursor);
-        setLastInputLength(newValue.length);
+        // Set timeout to process buffered input
+        pasteTimeoutRef.current = setTimeout(() => {
+          const bufferedInput = pasteBufferRef.current;
+          pasteBufferRef.current = '';
 
-        // Auto-detect file paths when user types/pastes them
-        // Look for patterns like /path/to/file.png or ./relative/path.jpg
-        const pathPattern = /(?:\.\/|\/|~\/)[^\s]+\.(png|jpg|jpeg|gif|webp|bmp|txt|md|json|js|ts|tsx|jsx|py|go|rs)/gi;
-        const matches = newValue.match(pathPattern);
+          // Detect if this is a large paste
+          const isPaste = bufferedInput.length > 20;
+          const pastedLines = bufferedInput.split('\n');
+          const isPasteMultiline = pastedLines.length > 3;
 
-        if (matches && matches.length > 0) {
-          // Get the last match (most recently typed/pasted path)
-          const lastPath = matches[matches.length - 1];
+          let finalInput = bufferedInput;
 
-          // Check if we haven't already attached this file
-          const alreadyAttached = attachedFiles.some(f => f.fileName === path.basename(lastPath));
-
-          if (!alreadyAttached && fs.existsSync(lastPath)) {
-            // Auto-attach the file and remove the path from text
-            setTimeout(() => {
-              attachFile(lastPath);
-              // Remove the file path from the input text
-              const cleanedValue = newValue.replace(lastPath, '').trim();
-              onChange(cleanedValue);
-              setCursorOffset(cleanedValue.length);
-            }, 10);
+          // Wrap large pastes in [Pasted X Lines] format
+          if (isPaste && isPasteMultiline) {
+            finalInput = `[Pasted ${pastedLines.length} Lines]\n${bufferedInput}`;
           }
-        }
+
+          // Insert at cursor position
+          const newValue =
+            value.slice(0, cursorOffset) + finalInput + value.slice(cursorOffset);
+          const newCursor = cursorOffset + finalInput.length;
+
+          onChange(newValue);
+          setCursorOffset(newCursor);
+
+          // Auto-detect file paths when user types/pastes them
+          const pathPattern = /(?:\.\/|\/|~\/)[^\s]+\.(png|jpg|jpeg|gif|webp|bmp|txt|md|json|js|ts|tsx|jsx|py|go|rs)/gi;
+          const matches = newValue.match(pathPattern);
+
+          if (matches && matches.length > 0) {
+            const lastPath = matches[matches.length - 1];
+            const alreadyAttached = attachedFiles.some(f => f.fileName === path.basename(lastPath));
+
+            if (!alreadyAttached && fs.existsSync(lastPath)) {
+              setTimeout(() => {
+                attachFile(lastPath);
+                const cleanedValue = newValue.replace(lastPath, '').trim();
+                onChange(cleanedValue);
+                setCursorOffset(cleanedValue.length);
+              }, 10);
+            }
+          }
+        }, 5); // 5ms batch window - catches paste, imperceptible to typing
       }
     },
     { isActive: !disabled }
   );
 
   const handleSubmit = () => {
+    // Clear any pending paste timeout
+    if (pasteTimeoutRef.current) {
+      clearTimeout(pasteTimeoutRef.current);
+    }
+
     const contentBlocks: ContentBlock[] = [];
 
     // Add text content if present
@@ -237,6 +257,7 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
       onChange('');
       setCursorOffset(0);
       setAttachedFiles([]);
+      pasteBufferRef.current = ''; // Clear paste buffer
     }
   };
 
@@ -313,7 +334,7 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
       )}
 
       {/* Input area */}
-      <Box flexDirection="column" borderStyle="round" borderColor="orange" paddingX={1}>
+      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
         {lines.map((line, idx) => {
           // Render line with cursor if this is the current line
           if (idx === currentLine) {
@@ -322,7 +343,7 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
 
             return (
               <Box key={idx}>
-                <Text color="orange" bold>{idx === 0 ? '> ' : '  '}</Text>
+                <Text color="cyan" bold>{idx === 0 ? '> ' : '  '}</Text>
                 <Text color="white">
                   {beforeCursor}
                   <Text color="green" bold>▋</Text>
@@ -334,9 +355,9 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
             // Regular line without cursor
             return (
               <Box key={idx}>
-                <Text color="orange" bold>{idx === 0 ? '> ' : '  '}</Text>
+                <Text color="cyan" bold>{idx === 0 ? '> ' : '  '}</Text>
                 <Text color="white">
-                  {line || (idx === 0 && !value ? <Text dimColor>{placeholder}</Text> : ' ')}
+                  {line || (idx === 0 && !value ? <Text dimColor color="gray">{placeholder}</Text> : ' ')}
                 </Text>
               </Box>
             );
@@ -347,7 +368,7 @@ export const MultiLineInput: React.FC<MultiLineInputProps> = ({
       {/* Help text */}
       <Box marginTop={1}>
         <Text color="gray" dimColor>
-          Enter = send | \+Enter = new line | Esc = cancel
+          <Text color="green">Shift+Enter</Text>=newline │ <Text color="yellow">Enter</Text>=send │ <Text color="red">Esc</Text>=cancel
         </Text>
       </Box>
 

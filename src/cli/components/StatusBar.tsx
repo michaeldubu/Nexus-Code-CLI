@@ -28,65 +28,75 @@ export const StatusBar: React.FC<Props> = ({
   const truncatedDir = workingDir.length > 30 ? '...' + workingDir.slice(-27) : workingDir;
 
   return (
-    <Box borderStyle="single" borderColor="green" paddingX={1}>
-      {/* Horizontal layout - everything in one line */}
-      <Text color="green" bold>{'>'} </Text>
+    <Box flexDirection="column">
+      <Box borderStyle="round" borderColor="cyan" paddingX={1} flexDirection="row">
+        {/* Horizontal layout - everything in one line */}
+        <Text color="cyan" bold>{'>'} </Text>
 
-      {/* Model(s) */}
-      <Text color="green">Model: </Text>
-      <Text color="greenBright" bold>{models.join('+')}</Text>
-      <Text color="green"> │ </Text>
+        {/* Model(s) */}
+        <Text color="cyan">Model: </Text>
+        <Text color="cyanBright" bold>{models.join('+')}</Text>
+        <Text color="gray"> │ </Text>
 
-      {/* Working Directory */}
-      <Text color="green">Dir: </Text>
-      <Text color="gray" dimColor>{truncatedDir}</Text>
-      <Text color="green"> │ </Text>
+        {/* Working Directory */}
+        <Text color="cyan">Dir: </Text>
+        <Text color="gray" dimColor>{truncatedDir}</Text>
+        <Text color="gray"> │ </Text>
 
-      {/* Messages */}
-      <Text color="green">Msgs: </Text>
-      <Text color="gray">{messageCount}</Text>
+        {/* Messages */}
+        <Text color="cyan">Msgs: </Text>
+        <Text color="white">{messageCount}</Text>
 
-      {/* Thinking/Reasoning */}
-      {thinkingEnabled !== undefined && (
-        <>
-          <Text color="green"> │ Thinking: </Text>
-          <Text color={thinkingEnabled ? 'greenBright' : 'gray'} bold={thinkingEnabled}>
-            {thinkingEnabled ? 'ON' : 'OFF'}
-          </Text>
-        </>
-      )}
+        {/* Thinking/Reasoning */}
+        {thinkingEnabled !== undefined && (
+          <>
+            <Text color="gray"> │ </Text>
+            <Text color="cyan">Thinking: </Text>
+            <Text color={thinkingEnabled ? 'green' : 'gray'} bold={thinkingEnabled}>
+              {thinkingEnabled ? 'ON' : 'OFF'}
+            </Text>
+          </>
+        )}
 
-      {reasoningLevel && (
-        <>
-          <Text color="green"> │ Reasoning: </Text>
-          <Text color="greenBright" bold>{reasoningLevel.toUpperCase()}</Text>
-        </>
-      )}
+        {reasoningLevel && (
+          <>
+            <Text color="gray"> │ </Text>
+            <Text color="cyan">Reasoning: </Text>
+            <Text color="green" bold>{reasoningLevel.toUpperCase()}</Text>
+          </>
+        )}
 
-      {/* Mode */}
-      {mode && (
-        <>
-          <Text color="green"> │ Mode: </Text>
-          <Text
-            color={mode === 'yolo' ? 'red' : mode === 'plan' ? 'cyan' : mode === 'autoedit' ? 'yellow' : 'white'}
-            bold={mode !== 'normal'}
-          >
-            {mode.toUpperCase()}
-          </Text>
-        </>
-      )}
+        {/* Mode */}
+        {mode && (
+          <>
+            <Text color="gray"> │ </Text>
+            <Text color="cyan">Mode: </Text>
+            <Text
+              color={mode === 'yolo' ? 'red' : mode === 'plan' ? 'cyan' : mode === 'autoedit' ? 'yellow' : 'white'}
+              bold={mode !== 'normal'}
+            >
+              {mode.toUpperCase()}
+            </Text>
+          </>
+        )}
 
-      {/* MCP Status */}
-      {mcpConnected !== undefined && (
-        <>
-          <Text color="green"> │ </Text>
-          <Text color={mcpConnected ? 'greenBright' : 'gray'} bold={mcpConnected}>
-            {mcpConnected ? '🧠 MCP' : '⚪ MCP'}
-          </Text>
-        </>
-      )}
+        {/* MCP Status */}
+        {mcpConnected !== undefined && (
+          <>
+            <Text color="gray"> │ </Text>
+            <Text color={mcpConnected ? 'green' : 'gray'} bold={mcpConnected}>
+              {mcpConnected ? '🧠 MCP' : '⚪ MCP'}
+            </Text>
+          </>
+        )}
+      </Box>
 
-      <Text color="gray" dimColor> │ Tab=thinking | Ctrl+R=reasoning | Shift+Tab=mode</Text>
+      {/* Help text below status bar - separate from border */}
+      <Box paddingX={2} marginTop={0}>
+        <Text color="gray" dimColor>
+          Shift+Enter=newline │ Tab=thinking │ Ctrl+R=reasoning │ Shift+Tab=mode
+        </Text>
+      </Box>
     </Box>
   );
 };

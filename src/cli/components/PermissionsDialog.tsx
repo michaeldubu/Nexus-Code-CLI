@@ -107,7 +107,7 @@ export const PermissionsDialog: React.FC<Props> = ({
           {approvedCommands.length > 10 && (
             <Box marginLeft={1}>
               <Text color="cyan">║ </Text>
-              <Text color="blue">  ...and {approvedCommands.length - 10} more</Text>
+              <Text color="cyan">  ...and {approvedCommands.length - 10} more</Text>
             </Box>
           )}
         </>
@@ -116,7 +116,7 @@ export const PermissionsDialog: React.FC<Props> = ({
       {selectedTab === 'deny' && (
         <>
           <Box marginLeft={1} marginTop={1}>
-            <Text color="blue">║ </Text>
+            <Text color="cyan">║ </Text>
             <Text color="red" bold>
               Denied Commands:{' '.repeat(43)}
             </Text>
@@ -124,7 +124,7 @@ export const PermissionsDialog: React.FC<Props> = ({
 
           {deniedCommands.length === 0 ? (
             <Box marginLeft={1}>
-              <Text color="blue">║ </Text>
+              <Text color="cyan">║ </Text>
               <Text color="green">  (none){' '.repeat(52)}</Text>
             </Box>
           ) : (
@@ -185,7 +185,7 @@ export const PermissionsDialog: React.FC<Props> = ({
       </Box>
 
       <Box marginTop={1}>
-        <Text color="blue" dimColor>
+        <Text color="cyan" dimColor>
           Tab = Cycle tabs | ↑↓ = Navigate | a = Add approved | d = Add denied | Esc = Close
         </Text>
       </Box>
